@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+            @bottom-center {
+                content: "Page " counter(page) " sur " counter(pages);
+            }
+        }
+        
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #0ea5e9;
+            padding-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #0ea5e9;
+            font-size: 32px;
+            margin: 0;
+        }
+        
+        .header .subtitle {
+            color: #666;
+            font-size: 18px;
+            margin-top: 10px;
+        }
+        
+        .executive-summary {
+            background-color: #f0f9ff;
+            border-left: 4px solid #0ea5e9;
+            padding: 20px;
+            margin: 30px 0;
+        }
+        
+        .stat-box {
+            background-color: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .stat-box h3 {
+            color: #0ea5e9;
+            margin-top: 0;
+        }
+        
+        .stat-value {
+            font-size: 36px;
+            font-weight: bold;
+            color: #22c55e;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        table thead {
+            background-color: #0ea5e9;
+            color: white;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        
+        table tbody tr:hover {
+            background-color: #f9fafb;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .badge-critical { background-color: #fee2e2; color: #dc2626; }
+        .badge-high { background-color: #fed7aa; color: #ea580c; }
+        .badge-medium { background-color: #fef3c7; color: #ca8a04; }
+        .badge-low { background-color: #d1fae5; color: #059669; }
+        
+        .page-break {
+            page-break-after: always;
+        }
+        
+        .chart-container {
+            margin: 30px 0;
+            text-align: center;
+        }
+        
+        .footer {
+            margin-top: 50px;
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ title }}</h1>
+        <div class="subtitle">Rapport d'Optimisation des Licences Salesforce</div>
+        <div class="subtitle">Généré le {{ generated_date }}</div>
+    </div>
+    
+    {% block content %}{% endblock %}
+    
+    <div class="footer">
+        <p>{{ organization_name }} | Confidentiel | {{ generated_date }}</p>
+    </div>
+</body>
+</html>
+

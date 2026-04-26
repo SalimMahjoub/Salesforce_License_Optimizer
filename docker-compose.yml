@@ -1,0 +1,100 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: slo-postgres
+    environment:
+      POSTGRES_USER: slo_user
+      POSTGRES_PASSWORD: slo_password
+      POSTGRES_DB: license_optimizer
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slo_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - slo-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: slo-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - slo-network
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: slo-backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Application
+      APP_NAME: salesforce-license-optimizer
+      APP_ENV: development
+      DEBUG: "true"
+      LOG_LEVEL: INFO
+      
+      # Database
+      DATABASE_URL: postgresql+asyncpg://slo_user:slo_password@db:5432/license_optimizer
+      DATABASE_POOL_SIZE: 10
+      
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      
+      # Salesforce OAuth (use your own credentials)
+      SF_CLIENT_ID: ${SF_CLIENT_ID:-your_connected_app_client_id}
+      SF_CLIENT_SECRET: ${SF_CLIENT_SECRET:-your_connected_app_client_secret}
+      SF_REDIRECT_URI: ${SF_REDIRECT_URI:-http://localhost:8000/oauth/callback}
+      
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-your-api-key-here}
+      
+      # Notifications
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.example.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      
+      # Security
+      SECRET_KEY: ${SECRET_KEY:-your-secret-key-for-jwt-minimum-32-characters-please-change-in-production}
+      CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8000"]'
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - slo-network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  slo-network:
+    driver: bridge
+

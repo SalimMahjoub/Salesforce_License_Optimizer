@@ -1,0 +1,757 @@
+Product Requirements Document (PRD)
+Salesforce License Optimizer
+Version: 1.0
+Date: 29 décembre 2025
+Auteur: Architecture Team
+Statut: Draft for Review
+
+1. Executive Summary
+Salesforce License Optimizer est un SaaS d'optimisation financière qui analyse automatiquement l'utilisation réelle des licences Salesforce pour identifier 20-60% de gaspillage typique et générer un plan d'optimisation sur-mesure.
+Problème métier
+
+Une licence Sales Cloud coûte ~150€/mois/utilisateur
+Une entreprise de 500 employés paie 600k-1,2M€/an en licences Salesforce
+40-60% de ces licences sont mal utilisées ou inutiles
+Aucune visibilité pour le DSI, CFO ou Salesforce lui-même
+L'audit manuel est chronophage et techniquement complexe
+
+Proposition de valeur
+
+ROI immédiat: 5k-20k€ d'économies détectées dès le premier scan
+Zéro risque sécurité: Analyse uniquement métadonnées et logs (zero-knowledge)
+Setup rapide: 3h de travail humain total par client
+Monitoring continu: Rétention via alertes sécurité et conformité
+
+
+2. Objectifs Produit
+Objectifs Business (6-12 mois)
+
+Générer 5-20k€ d'économies mensuelles par client en moyenne
+Atteindre 50 clients entreprise (500+ employés)
+Taux de rétention >85% via monitoring continu
+Time-to-value <30 jours (collecte + premier rapport)
+
+Objectifs Utilisateurs
+
+CFO/DAF: Réduire les coûts fixes IT de 20-40%
+DSI/CTO: Visibilité claire sur utilisation réelle des licences
+ESN/TMA: Proposition d'audit récurrent à forte valeur ajoutée
+RSSI: Détection proactive des risques de permissions excessives
+
+Métriques de Succès (Success Metrics)
+
+Économies détectées: Moyenne par client, médiane, P90
+Adoption: % d'utilisateurs ayant consulté le dashboard dans les 7 derniers jours
+Rétention: Churn rate mensuel <2%
+Time-to-insight: Délai entre connexion OAuth et premier rapport
+Taux d'application: % de recommandations appliquées par les clients
+
+
+3. User Personas
+Persona 1: Claire (CFO / Directrice Financière)
+
+Âge: 45-55 ans
+Contexte: Entreprise 500-5000 employés, budget IT 5-20M€/an
+Pain points:
+
+Pas de visibilité sur ROI réel des licences SaaS
+Pression pour réduire coûts fixes sans impacter business
+Audits manuels coûteux et rares (1x/an max)
+
+
+Jobs-to-be-done:
+
+Identifier rapidement les postes d'économies actionnables
+Justifier des décisions budgétaires avec données factuelles
+Reporting exécutif clair pour COMEX
+
+
+Success criteria: Dashboard exécutif montrant €€€ d'économies potentielles en <5 minutes
+
+Persona 2: Marc (DSI / Directeur des Systèmes d'Information)
+
+Âge: 40-50 ans
+Contexte: Responsable infrastructure + applications métier
+Pain points:
+
+Pas d'outils pour mesurer utilisation réelle vs licences payées
+Demandes récurrentes de nouvelles licences sans visibilité sur existant
+Complexité technique Salesforce (metadata, profiles, permissions)
+
+
+Jobs-to-be-done:
+
+Optimiser allocation des licences sans impacter utilisateurs
+Détecter les risques de sécurité (permissions over-allocated)
+Automatiser l'audit d'utilisation (pas de travail manuel)
+
+
+Success criteria: Rapport technique détaillé par utilisateur/profil avec recommandations actionnables
+
+Persona 3: Sophie (Consultante ESN/TMA)
+
+Âge: 30-40 ans
+Contexte: Manage 10-30 clients Salesforce
+Pain points:
+
+Difficile de démontrer valeur continue après implémentation initiale
+Clients demandent "pourquoi on paie autant Salesforce?"
+Besoin de services récurrents à forte marge
+
+
+Jobs-to-be-done:
+
+Proposer un audit financier trimestriel à forte valeur
+White-label ou co-branding pour ses clients
+Reporting automatisé pour limiter charge de travail
+
+
+Success criteria: Template de rapport client prêt à l'emploi, branding personnalisable
+
+
+4. Functional Requirements
+4.1 Core Features (MVP)
+FR-001: OAuth Connection to Salesforce
+Priority: P0 (Critical)
+User Story: En tant que DSI, je veux connecter mon org Salesforce de manière sécurisée pour autoriser l'analyse.
+Acceptance Criteria:
+
+OAuth 2.0 flow standard Salesforce
+Demande uniquement les permissions minimales requises:
+
+api (lecture métadonnées)
+refresh_token (connexion persistante)
+
+
+Pas d'accès aux données business (opportunités, contacts, comptes)
+Stockage sécurisé des tokens (chiffrement at-rest)
+Révocation possible côté client à tout moment
+Temps de setup: <30 minutes
+
+Technical Notes:
+
+Utiliser Salesforce Connected App
+Scopes: api, refresh_token, offline_access
+Exclure explicitement: full, custom_permissions
+
+
+FR-002: Data Collection Engine
+Priority: P0 (Critical)
+User Story: En tant que système, je collecte automatiquement les métadonnées et logs d'utilisation sur 30 jours.
+Acceptance Criteria:
+
+Collecte quotidienne automatique via Salesforce APIs:
+
+UserLogin (dernière connexion, fréquence)
+Profile et PermissionSet (droits attribués)
+SetupAuditTrail (activités admin)
+EventLogFile (field usage, report views, dashboard views)
+Metadata API (objets custom, champs custom utilisés)
+
+
+Période de collecte: minimum 30 jours (configurable)
+Agrégation par utilisateur + profil + licence type
+Stockage format structuré (JSON/Parquet)
+Zéro accès aux données sensibles (contacts, opportunités, etc.)
+
+Data Schema (simplified):
+json{
+  "user_id": "005...",
+  "username": "john.doe@company.com",
+  "profile": "Sales Cloud User",
+  "license_type": "Salesforce",
+  "last_login": "2025-12-20T14:32:00Z",
+  "login_count_30d": 18,
+  "features_used": ["Opportunities", "Reports"],
+  "fields_edited_30d": ["Account.Name", "Opportunity.Amount"],
+  "permission_sets": ["Custom_Sales_Permissions"],
+  "high_risk_permissions": ["ModifyAllData"]
+}
+```
+
+---
+
+#### FR-003: User Classification Algorithm
+**Priority:** P0 (Critical)  
+**User Story:** En tant que système, je classifie automatiquement chaque utilisateur dans 5 catégories d'utilisation.
+
+**Classification Logic:**
+
+| Catégorie | Utilisation | Critères | Recommandation Typique |
+|-----------|-------------|----------|------------------------|
+| **Zombie** | 0-10% | Pas de connexion depuis 90+ jours OU <2 connexions/mois | Désactiver licence |
+| **Ghost** | 10-30% | Connexion occasionnelle mais <5 actions/mois | Downgrade → Platform ou Chatter (25€/mois) |
+| **Casual** | 30-60% | Utilise features basiques uniquement (ex: lecture seule) | Downgrade → Sales Essentials (75€/mois) |
+| **Power User** | 60-90% | Utilise majorité des features disponibles | Licence actuelle OK |
+| **Super User** | 90-100% | Utilise toutes les features + besoins avancés | Considérer upgrade (Einstein, etc.) |
+
+**Scoring Formula (exemple simplifié):**
+```
+Utilization_Score = (
+    login_frequency_score * 0.3 +
+    features_used_score * 0.4 +
+    data_creation_score * 0.2 +
+    advanced_features_score * 0.1
+) * 100
+```
+
+**Acceptance Criteria:**
+- Classification mise à jour quotidiennement
+- Historique conservé (évolution dans le temps)
+- Règles de scoring configurables par admin
+- Export CSV de la classification
+
+---
+
+#### FR-004: Optimization Plan Generation
+**Priority:** P0 (Critical)  
+**User Story:** En tant que CFO, je reçois un plan d'optimisation chiffré avec économies potentielles par action.
+
+**Plan Components:**
+1. **Executive Summary:**
+   - Coût actuel total mensuel/annuel
+   - Économies potentielles totales
+   - Top 3 quick wins
+
+2. **Recommendations détaillées:**
+   - Liste par utilisateur avec:
+     - Nom/Email
+     - Licence actuelle (coût mensuel)
+     - Licence recommandée (coût mensuel)
+     - Économie mensuelle/annuelle
+     - Justification (classification + métriques)
+     - Niveau de risque (Low/Medium/High)
+
+3. **Security Alerts:**
+   - Utilisateurs avec permissions excessives
+   - Profils avec "Modify All Data" non utilisé
+   - Accès admin inutiles
+
+**Acceptance Criteria:**
+- Génération automatique après 30 jours de collecte
+- Format PDF + dashboard interactif
+- Calculs certifiés (prix Salesforce officiels)
+- Filtrage par département/entité/coût minimum
+- Simulation "What-if" (impact si j'applique ces 10 recommandations)
+
+**Example Output:**
+```
+📊 CURRENT STATE
+Total Monthly Cost: €75,000
+Total Annual Cost: €900,000
+Active Users: 500
+
+💰 OPTIMIZATION POTENTIAL
+Total Monthly Savings: €18,500 (24.7%)
+Total Annual Savings: €222,000
+
+🎯 TOP 3 QUICK WINS
+1. Deactivate 25 Zombie licenses → €3,750/month
+2. Downgrade 50 Ghost users to Platform → €6,250/month
+3. Downgrade 30 Casual users to Essentials → €2,250/month
+
+⚠️ SECURITY ALERTS
+- 12 users with "Modify All Data" (unused last 90 days)
+- 8 System Admin profiles (only 2 active)
+
+FR-005: Interactive Dashboard
+Priority: P0 (Critical)
+User Story: En tant que DSI, je visualise en temps réel l'utilisation des licences et l'évolution des économies.
+Dashboard Views:
+
+Executive View (CFO):
+
+KPIs: Coût total, Économies potentielles, ROI
+Graphiques: Évolution coûts/économies dans le temps
+Répartition par catégorie d'utilisateur (pie chart)
+
+
+Operational View (DSI):
+
+Tableau détaillé par utilisateur (sortable, filterable)
+Drill-down par département/profil/licence type
+Alertes sécurité avec détail des permissions
+
+
+Tracking View:
+
+Recommandations appliquées vs en attente
+Économies réalisées vs potentielles
+Timeline des optimisations
+
+
+
+Acceptance Criteria:
+
+Responsive (desktop + tablet)
+Temps de chargement <2s
+Export Excel/CSV de tous les tableaux
+Filtres sauvegardables (vues personnalisées)
+Refresh automatique quotidien
+
+
+4.2 Retention Features (Post-MVP)
+FR-006: Continuous Monitoring & Alerts
+Priority: P1 (High)
+User Story: En tant que DSI, je reçois des alertes automatiques quand de nouvelles optimisations sont détectées.
+Alert Types:
+
+New Zombie detected (utilisateur inactif 90+ jours)
+License underutilization (utilisateur Power → Casual)
+Security risk (nouvelle permission excessive)
+Cost spike (augmentation soudaine de licences)
+Compliance (profil admin non justifié)
+
+Delivery Channels:
+
+Email digest (quotidien/hebdomadaire)
+Slack/Teams integration
+In-app notifications
+
+Acceptance Criteria:
+
+Configuration des seuils d'alerte par client
+Historique des alertes consultable
+Snooze/dismiss alerts
+Escalation automatique si non traité sous X jours
+
+
+FR-007: Permissions Risk Monitoring (24/7)
+Priority: P1 (High)
+User Story: En tant que RSSI, je surveille en continu les permissions critiques pour détecter les anomalies.
+Monitored Permissions:
+
+ModifyAllData
+ViewAllData
+ManageUsers
+CustomizeApplication
+ApiEnabled (pour utilisateurs non-tech)
+
+Risk Scoring:
+
+Critical: Permission sensible + jamais utilisée + profil non-admin
+High: Permission sensible + utilisée <1x/mois
+Medium: Permission standard + over-allocated vs usage
+Low: Permissions alignées avec usage réel
+
+Acceptance Criteria:
+
+Dashboard dédié "Security Posture"
+Scoring évolutif dans le temps
+Recommandations de révocation priorisées
+Audit trail des changements de permissions
+Rapport trimestriel de conformité (SOC2, ISO27001)
+
+
+5. Non-Functional Requirements
+NFR-001: Security & Privacy
+Priority: P0 (Critical)
+Requirements:
+
+Zero-Knowledge Architecture:
+
+Aucun accès aux données business (opportunités, contacts, comptes)
+Collecte limitée à: métadonnées, logs, permissions
+Chiffrement at-rest (AES-256) et in-transit (TLS 1.3)
+
+
+Compliance:
+
+RGPD compliant (données EU stockées en EU)
+SOC2 Type II (audit annuel)
+Salesforce Security Review approved
+
+
+Access Control:
+
+RBAC (Role-Based Access Control) pour users internes
+MFA obligatoire pour admin accounts
+Audit logs de tous les accès sensibles
+
+
+Data Retention:
+
+Données utilisateur conservées max 90 jours après churn
+Logs système conservés 1 an
+Suppression automatique sur demande client (<30 jours)
+
+
+
+Success Metrics:
+
+0 incident de sécurité majeur
+<48h pour security patch critique
+100% des clients passent leur security review interne
+
+
+NFR-002: Performance & Scalability
+Priority: P0 (Critical)
+Requirements:
+
+Response Times:
+
+Dashboard load: <2s (p95)
+API calls: <500ms (p95)
+Génération de rapport: <30s pour 1000 users
+
+
+Scalability:
+
+Support 10,000 users analysés par org
+500 orgs Salesforce connectées simultanément
+Collecte quotidienne sans impact performance client
+
+
+Availability:
+
+SLA 99.9% uptime (hors maintenance planifiée)
+RTO (Recovery Time Objective): <1h
+RPO (Recovery Point Objective): <15min
+
+
+
+Success Metrics:
+
+p95 latency <2s maintenu sous charge
+0 downtime non planifié sur heures business
+Auto-scaling validé jusqu'à 10x trafic actuel
+
+
+NFR-003: Maintainability & Observability
+Priority: P1 (High)
+Requirements:
+
+Code Quality:
+
+Test coverage >80% (unit + integration)
+Linting/formatting automatisé (CI/CD)
+Documentation API (OpenAPI/Swagger)
+
+
+Observability:
+
+Logging structuré (JSON) avec correlation IDs
+Métriques temps réel (Prometheus/Grafana)
+Distributed tracing (Jaeger/OpenTelemetry)
+Alerting proactif (PagerDuty/Opsgenie)
+
+
+Deployment:
+
+CI/CD automatisé (GitOps)
+Blue-green deployment
+Rollback automatique si erreur rate >5%
+Feature flags pour déploiements progressifs
+
+
+
+Success Metrics:
+
+MTTR (Mean Time To Repair) <30min
+Déploiement sans downtime 100% du temps
+0 régression détectée en production
+
+
+NFR-004: Usability & Accessibility
+Priority: P1 (High)
+Requirements:
+
+UX Principles:
+
+Time-to-insight <5min pour executive view
+Maximum 3 clics pour accéder à n'importe quelle info
+Feedback visuel immédiat sur toute action
+
+
+Accessibility:
+
+WCAG 2.1 Level AA compliance
+Keyboard navigation complète
+Screen reader compatible
+Contrast ratios >4.5:1
+
+
+Internationalization:
+
+UI en Français + Anglais (MVP)
+Montants en EUR/USD/GBP selon org
+Dates/heures localisées
+
+
+
+Success Metrics:
+
+Net Promoter Score (NPS) >40
+Time-to-first-insight <10min (onboarding)
+Support tickets "How do I...?" <5% du total
+
+
+6. User Journeys
+Journey 1: Premier Audit (DSI + CFO)
+Steps:
+
+Discovery (J0)
+
+DSI voit démo ou case study
+Contacte équipe sales
+Reçoit proposition commerciale
+
+
+Onboarding (J1)
+
+DSI crée compte sur plateforme
+Configure OAuth Salesforce (30min)
+Valide permissions demandées
+
+
+Collecte (J1-J30)
+
+Système collecte données en arrière-plan
+DSI reçoit emails de progression (J7, J14, J21)
+Aucune action requise
+
+
+Premier Rapport (J30)
+
+Notification: "Votre rapport d'optimisation est prêt"
+DSI consulte dashboard (5min)
+Identifie 18k€/mois d'économies potentielles
+
+
+Présentation CFO (J35)
+
+DSI exporte rapport PDF exécutif
+Meeting CFO (30min): validation économies
+Décision: appliquer top 10 recommandations
+
+
+Implémentation (J40-J60)
+
+DSI désactive 20 licences Zombie
+Downgrade 30 utilisateurs Ghost
+Configure alertes monitoring
+
+
+Tracking ROI (J90)
+
+Dashboard montre 15k€/mois économisés réellement
+CFO valide renouvellement annuel
+
+
+
+Pain Points à éviter:
+
+Setup OAuth trop complexe → Wizard step-by-step
+30 jours d'attente → Emails de progression + preview J7
+Rapport illisible → Templates exécutifs clairs
+
+
+Journey 2: Monitoring Continu (DSI)
+Steps:
+
+Routine quotidienne (Mois 2+)
+
+DSI ouvre dashboard chaque matin (2min)
+Vérifie nouvelles alertes
+No action si tout vert
+
+
+Alerte détectée (Semaine X)
+
+Email: "5 nouveaux utilisateurs Zombie détectés"
+DSI consulte liste dans dashboard
+Valide inactivité réelle (pas congés/maladie)
+Désactive licences en 1 clic
+
+
+Alerte sécurité (Mois 4)
+
+Notification critique: "Utilisateur non-admin avec ModifyAllData"
+DSI investigates: erreur d'attribution permission
+Révoque permission excessive
+Documente incident dans audit trail
+
+
+Reporting trimestriel (Q1, Q2...)
+
+Génération auto rapport Q1
+DSI présente au COMEX:
+
+42k€ économisés Q1
+3 risques sécurité détectés et corrigés
+Recommandations Q2
+
+
+
+
+Renouvellement (Année 1)
+
+CFO valide ROI: 180k€ économisés / an
+Coût outil: 30k€/an
+ROI = 6x → Renouvellement immédiat
+
+
+
+
+7. Technical Constraints
+TC-001: Salesforce API Limitations
+
+API Call Limits: 15,000 calls/24h (Enterprise) ou 1,000,000 calls/24h (Unlimited)
+Bulk API: Max 10,000 records par batch
+EventLogFile: Disponible uniquement avec certaines licences (vérifier éligibilité)
+Mitigation: Implémenter rate limiting + caching + collecte incrémentale
+
+TC-002: Data Volume
+
+Orgs testées: 100-10,000 utilisateurs
+Volumétrie: ~1-5MB de métadonnées par org par jour
+Rétention: 90 jours de données historiques
+Storage estimé: ~100GB pour 500 orgs sur 90 jours
+
+TC-003: Salesforce Editions Support
+
+Supporté: Enterprise, Unlimited, Performance
+Non supporté: Essentials, Professional (APIs limitées)
+Validation: Détecter édition lors onboarding et afficher compatibilité
+
+
+8. Success Metrics (KPIs)
+Business Metrics
+MetricTarget (6 mois)Target (12 mois)ARR (Annual Recurring Revenue)€500k€1.5MNombre de clients actifs2550Économies moyennes/client/mois€10k€15kCustomer Lifetime Value (LTV)€100k€150kCAC (Customer Acquisition Cost)<€15k<€10kLTV/CAC Ratio>3>5
+Product Metrics
+MetricTargetTime-to-first-report<30 jours (100%)Daily Active Users (DAU)>60% des adminsRecommendations applied rate>40%Dashboard load time (p95)<2sAPI error rate<0.1%
+Retention Metrics
+MetricTargetNet Revenue Retention (NRR)>110%Churn rate (monthly)<2%NPS (Net Promoter Score)>40Support ticket resolution time<4h (critical), <24h (normal)
+
+9. Pricing Strategy (Indicative)
+Modèle 1: Per-User Pricing
+
+€2/utilisateur Salesforce/mois
+Exemple: 500 users = €1,000/mois = €12k/an
+ROI typique: 10-15x (client économise 10-15k€/mois)
+
+Modèle 2: Value-Based Pricing
+
+15% des économies détectées (première année)
+€500/mois flat fee (années suivantes pour monitoring)
+Exemple: 15k€ économies/mois → €2,250/mois année 1, puis €500/mois
+
+Modèle 3: Tiered Pricing (Recommandé MVP)
+PlanUsersPrix MensuelFeaturesStarter<250€499Audit initial + Dashboard basiqueProfessional250-1000€999+ Monitoring continu + AlertesEnterprise1000+€1,999+ API access + White-label + Support dédié
+Add-ons:
+
+Security Monitoring 24/7: +€300/mois
+Quarterly Executive Reports: +€200/mois
+Implementation Support: €2,000 one-time
+
+
+10. Roadmap & Phasing
+Phase 0: Discovery & Validation (T0 - T+1 mois)
+
+ Interviews 10 DSI/CFO (validation problème)
+ POC technique: collecte données 1 org test
+ Wireframes dashboard principal
+ Validation pricing avec 5 prospects
+
+Phase 1: MVP (T+1 - T+4 mois)
+Scope:
+
+FR-001: OAuth Connection
+FR-002: Data Collection (30 jours)
+FR-003: User Classification
+FR-004: Optimization Plan (PDF + dashboard basique)
+NFR-001: Security (encryption, OAuth scopes)
+NFR-002: Performance (support 10 orgs, 1000 users/org)
+
+Deliverables:
+
+Webapp fonctionnelle (React + Node.js)
+Onboarding wizard
+Dashboard exécutif (1 vue)
+Premier client pilote onboardé
+
+Success Criteria:
+
+1 client pilote détecte >10k€ économies/mois
+Setup time <1h
+0 incident sécurité
+
+
+Phase 2: Scale & Retention (T+4 - T+7 mois)
+Scope:
+
+FR-005: Dashboard interactif (3 vues)
+FR-006: Continuous Monitoring + Alerts
+FR-007: Permissions Risk Monitoring
+NFR-003: Observability (logs, metrics, tracing)
+Intégrations: Slack, Teams, Email
+
+Deliverables:
+
+Alerting system
+Security dashboard
+10 clients actifs
+
+Success Criteria:
+
+Churn <5%
+NPS >30
+50% des clients consultent dashboard quotidiennement
+
+
+Phase 3: Enterprise Features (T+7 - T+12 mois)
+Scope:
+
+API publique (pour intégrations ESN)
+White-label / Co-branding
+Multi-org management (groupe avec filiales)
+Advanced analytics (ML predictions)
+RBAC avancé (délégation permissions)
+
+Deliverables:
+
+API REST documentée
+50 clients actifs
+5 partenaires ESN
+
+Success Criteria:
+
+ARR >€1M
+LTV/CAC >5
+80% recommendations applied rate
+
+
+11. Risks & Mitigations
+RiskProbabilitéImpactMitigationSalesforce change API limitsMoyenCritiqueMonitoring quotidien limites + plan B (bulk API)Security breach perceptionFaibleCritiqueCertification SOC2 + messaging "zero-knowledge"Low recommendation adoptionMoyenMoyenGamification + tracking ROI + support implémentationClient churn après nettoyageÉlevéCritiqueMonitoring continu + alertes sécurité (rétention)Complexité setup OAuthMoyenMoyenWizard step-by-step + vidéos tutorielsConcurrence (Salesforce Optimizer existant?)MoyenMoyenRecherche concurrentielle + différenciation sécuritéRGPD/Compliance blocageFaibleÉlevéLegal review + DPA templates + hébergement EU
+
+12. Open Questions & Decisions Needed
+Questions Business
+
+Pricing final: Per-user vs Value-based vs Tiered? → Décision requise avant commercialisation
+Target primaire: CFO vs DSI vs ESN? → Impacte messaging + sales strategy
+Freemium? → Audit gratuit 1 mois puis payant? → Évaluer CAC reduction
+
+Questions Produit
+
+EventLogFile access: Quid si client n'a pas accès (édition limitée)? → Fallback sur UserLogin only?
+Recommandations auto-apply? → Client veut 1-click downgrade? → Risque legal/métier?
+Multi-cloud? → Salesforce + autres SaaS (Microsoft 365, Google Workspace)? → Roadmap Phase 4?
+
+Questions Techniques
+
+Architecture: Monolithe vs Microservices? → Décision Architecture Phase
+Stack: React vs Vue? Node.js vs Python? PostgreSQL vs MongoDB? → Décision Build Phase
+Hébergement: AWS vs GCP vs Azure? → Dépend clients EU vs US
+
+
+13. Appendices
+Appendix A: Salesforce License Types & Pricing (2025)
+License TypeMonthly CostTypical Use CaseSalesforce (Standard)€150Full Sales Cloud accessSales Cloud Essentials€75Small teams, basic salesPlatform€25Custom apps only, no CRMChatter Free€0Collaboration onlyService Cloud€150Customer supportEinstein (Add-on)+€50AI features
+Appendix B: Salesforce APIs Used
+
+REST API: User, Profile, PermissionSet CRUD
+Metadata API: Custom objects/fields discovery
+Tooling API: Apex classes, Triggers (for security audit)
+Analytics API: Report/Dashboard usage stats
+EventLogFile API: Login history, field edits (if available)
+SOQL Queries: Custom queries on Usage data

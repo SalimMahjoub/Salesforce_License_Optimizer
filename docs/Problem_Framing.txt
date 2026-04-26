@@ -1,0 +1,95 @@
+Name : "Salesforce License Optimizer".
+
+Concept :Un outil d'optimisation financière automatique des licences Salesforce et des accès utilisateurs. Un SaaS qui analyse automatiquement l'utilisation réelle des licences Salesforce dans une organisation, identifie les 20-60% de gaspillage, génère un plan d'optimisation sur-mesure.
+
+Problèmes à résoudre :
+
+- Une licence Salesforce : "Sales Cloud" coûte environ 150 € / mois / utilisateur.
+- Une entreprise de 500 employés paie en moyenne 600 000-1 200 000€/an en licences Salesforce
+- 40-60% de ces licences sont mal utilisées ou inutiles ⇒ Personne ne le sait (ni le DSI, ni le CFO, ni Salesforce)
+- Le Chiffre :Environ 20% des licences dans les grandes entreprises sont inutilisées ou "sur-gradées" (un utilisateur a une licence à 150 € alors qu'une licence "Platform" à 25 € suffirait).
+- La Complexité :Pour un admin, savoir qui n'utilise pas ses accès ou quels champs sont réellement remplis par quel utilisateur est un travail manuel de titan.
+- Le Résultat :Les entreprises perdent des dizaines de milliers d'euros chaque mois par simple flemme ou manque d'outils.
+    
+    Solution : Un outils qui analyse uniquement les logs de connexion et les statistiques d'utilisation des champs (Metadata & System Logs) pour générer un rapport de "Nettoyage Financier"
+    
+1. Détection :"Cet utilisateur ne s'est pas connecté depuis 60 jours : Supprimez la licence."
+2. Downgrade :( exemple : "Ces 50 utilisateurs n'utilisent que des objets personnalisés et jamais les 'Opportunities' : Passez-les de Sales Cloud à Platform (Gain : 6 000 € / mois)."
+    
+    Schéma Global :
+    
+    Collecte :Extraction des UserLogins, Profiles et FieldUsage via API (Données techniques uniquement,zéro donnée client).
+    
+    IA de Scoring : Un modèle simple qui calcule un "Score d'utilité" par utilisateur. ( à vous de décider si on utilise l’IA ou pas : ne pas exagérer )
+    
+    Rapport de Décision :Un dashboard montrant le montant exact à économiser immédiatement.
+    
+    Résultats attendus : Tu trouves souvent 5k€ à 20k€ d'économies dès le premier scan.
+    
+    Cible :
+    
+    CFO (Directeur Financier) & DSI :Ils adorent ce qui réduit les coûts fixes.
+    
+    ESN (TMA) :Elles peuvent proposer cet "Audit de Santé Financière" tous les trimestres à leurs clients.
+    
+    Risque Sécurité : NUL. Tu ne lis pas le contenu des contrats, tu ne lis pas le code Apex. Tu lis des dates de connexion et des noms de champs. C'est le niveau de sécurité le plus bas (le plus facile à faire accepter).
+    
+    Complexité Tech : C'est de l'analyse de données structurées (JSON/CSV).
+    
+
+A rajouter : 
+
+1. **Security Clean-up :** "Ces profils ont l'accès 'Modify All Data' mais ne l'utilisent jamais : Risque de sécurité détecté."
+2. Tu dois inclure le monitoring des **Permissions** (Sécurité) 24/7 pour que l'outil reste indispensable pour la conformité (Pour éviter : Une fois que le nettoyage est fait, le client peut vouloir couper l'abonnement. ).
+
+**Sécurité "Zero-Knowledge" — PARFAIT :** 
+
+Tu analyses uniquement :
+
+- **Les métadonnées des licences** (qui a quelle licence)
+- **Les logs d'activité** (dernière connexion, features utilisées)
+- **Les permissions et profils** (ce à quoi ils ont accès vs ce qu'ils utilisent)
+
+**Zéro accès aux données business (opportunités, contacts, etc.)**
+
+C'est comme analyser les badges d'accès d'un immeuble de bureaux : tu vois qui entre, quand, dans quel étage, mais tu ne sais pas ce qu'ils y font.
+
+**Algorithme de Classification + Algorithme de scoring**
+
+**Tu créés 5 catégories d'utilisateurs :**
+
+1. **Zombies (0-10% utilisation)**
+    - N'ont pas ouvert Salesforce depuis 90+ jours
+    - Recommandation : désactiver la licence
+2. **Ghost Users (10-30% utilisation)**
+    - Se connectent occasionnellement mais n'utilisent presque rien
+    - Recommandation : downgrade vers Platform ou Chatter
+3. **Casual Users (30-60% utilisation)**
+    - Utilisent des features basiques seulement
+    - Recommandation : downgrade vers Sales Essentials ou Platform
+4. **Power Users (60-90% utilisation)**
+    - Utilisent beaucoup de features
+    - Recommandation : licence actuelle OK
+5. **Super Users (90-100% utilisation)**
+    - Utilisent tout
+    - Recommandation : peut-être upgrade (Einstein, etc.)
+
+**Génération du Plan d'Optimisation**
+
+**Dashboard + Reporting**
+
+**Tracking des Économies Réalisées**
+
+**Scalabilité : Setup initial :**
+
+- 30 minutes de connexion OAuth
+- 30 jours de collecte de données (automatique)
+- 2h de présentation du rapport au CFO
+- **Total : 3h de travail humain par client**
+
+**Après :**
+
+- Monitoring automatique
+- Dashboard self-service
+- Alertes si nouvelles optimisations détectées
+- **Support : quasi-zéro**

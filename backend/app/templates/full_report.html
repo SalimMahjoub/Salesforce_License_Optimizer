@@ -1,0 +1,190 @@
+{% extends "report_base.html" %}
+
+{% block content %}
+<!-- Executive Summary -->
+<div class="executive-summary">
+    <h2>Résumé Exécutif</h2>
+    <p>{{ executive_summary }}</p>
+</div>
+
+<!-- Key Metrics -->
+<h2>Métriques Clés</h2>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="stat-box">
+        <h3>Économies Mensuelles Potentielles</h3>
+        <div class="stat-value">${{ "%.2f"|format(monthly_savings) }}</div>
+        <p style="color: #666;">Économies annuelles: ${{ "%.2f"|format(annual_savings) }}</p>
+    </div>
+    
+    <div class="stat-box">
+        <h3>Utilisateurs Analysés</h3>
+        <div class="stat-value">{{ total_users }}</div>
+        <p style="color: #666;">{{ inactive_users }} inactifs identifiés</p>
+    </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- Recommendations Summary -->
+<h2>Résumé des Recommandations</h2>
+<p>Nombre total de recommandations: <strong>{{ recommendations|length }}</strong></p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Priorité</th>
+            <th>Type</th>
+            <th>Utilisateur</th>
+            <th>Économie Mensuelle</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for rec in recommendations[:20] %}
+        <tr>
+            <td>
+                {% if rec.priority == 'CRITICAL' %}
+                    <span class="badge badge-critical">CRITIQUE</span>
+                {% elif rec.priority == 'HIGH' %}
+                    <span class="badge badge-high">HAUTE</span>
+                {% elif rec.priority == 'MEDIUM' %}
+                    <span class="badge badge-medium">MOYENNE</span>
+                {% else %}
+                    <span class="badge badge-low">BASSE</span>
+                {% endif %}
+            </td>
+            <td>{{ rec.type }}</td>
+            <td>{{ rec.username }}</td>
+            <td>${{ "%.2f"|format(rec.monthly_savings) }}</td>
+            <td style="font-size: 11px;">{{ rec.title[:50] }}...</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if recommendations|length > 20 %}
+<p><em>... et {{ recommendations|length - 20 }} recommandations supplémentaires</em></p>
+{% endif %}
+
+<div class="page-break"></div>
+
+<!-- User Categories -->
+<h2>Distribution des Utilisateurs par Catégorie</h2>
+<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="stat-box">
+        <h3>🔴 Inactifs</h3>
+        <div class="stat-value" style="color: #dc2626;">{{ categories.INACTIVE }}</div>
+        <p>Score: 0-30 | Action: Désactiver</p>
+    </div>
+    
+    <div class="stat-box">
+        <h3>🟡 Sous-utilisés</h3>
+        <div class="stat-value" style="color: #ea580c;">{{ categories.UNDERUTILIZED }}</div>
+        <p>Score: 31-55 | Action: Downgrade</p>
+    </div>
+    
+    <div class="stat-box">
+        <h3>🔵 Optimisables</h3>
+        <div class="stat-value" style="color: #0ea5e9;">{{ categories.OPTIMIZABLE }}</div>
+        <p>Score: 56-75 | Action: Optimiser</p>
+    </div>
+    
+    <div class="stat-box">
+        <h3>🟢 Efficaces</h3>
+        <div class="stat-value" style="color: #22c55e;">{{ categories.EFFICIENT }}</div>
+        <p>Score: 76-100 | Action: Conserver</p>
+    </div>
+</div>
+
+<div class="page-break"></div>
+
+<!-- Action Plan -->
+<h2>Plan d'Action Recommandé</h2>
+<div class="executive-summary">
+    <h3>{{ action_plan.title }}</h3>
+    <p>{{ action_plan.executive_summary }}</p>
+</div>
+
+<h3>Étapes Détaillées</h3>
+<ol>
+    {% for step in action_plan.steps %}
+    <li>
+        <strong>{{ step.title }}</strong> ({{ step.duration_days }} jours)
+        <p>{{ step.description }}</p>
+        <p><em>Critères de succès:</em></p>
+        <ul>
+            {% for criteria in step.success_criteria %}
+            <li>{{ criteria }}</li>
+            {% endfor %}
+        </ul>
+    </li>
+    {% endfor %}
+</ol>
+
+<div class="page-break"></div>
+
+<!-- Quick Wins -->
+<h2>Quick Wins (Actions Immédiates)</h2>
+<ul>
+    {% for win in action_plan.quick_wins %}
+    <li>{{ win }}</li>
+    {% endfor %}
+</ul>
+
+<!-- Risks -->
+<h2>Risques et Mitigation</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Risque</th>
+            <th>Mitigation</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for risk in action_plan.risks %}
+        <tr>
+            <td>{{ risk.risk }}</td>
+            <td>{{ risk.mitigation }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="page-break"></div>
+
+<!-- Detailed Recommendations -->
+<h2>Recommandations Détaillées</h2>
+{% for rec in recommendations %}
+<div class="stat-box">
+    <h3>
+        {% if rec.priority == 'CRITICAL' %}
+            <span class="badge badge-critical">CRITIQUE</span>
+        {% elif rec.priority == 'HIGH' %}
+            <span class="badge badge-high">HAUTE</span>
+        {% elif rec.priority == 'MEDIUM' %}
+            <span class="badge badge-medium">MOYENNE</span>
+        {% else %}
+            <span class="badge badge-low">BASSE</span>
+        {% endif %}
+        {{ rec.title }}
+    </h3>
+    <p><strong>Utilisateur:</strong> {{ rec.username }} ({{ rec.license_type }})</p>
+    <p><strong>Description:</strong> {{ rec.description }}</p>
+    <p><strong>Justification:</strong></p>
+    <ul>
+        {% for rationale in rec.rationale %}
+        <li>{{ rationale }}</li>
+        {% endfor %}
+    </ul>
+    <p><strong>Économie mensuelle:</strong> <span style="color: #22c55e; font-size: 20px;">${{ "%.2f"|format(rec.monthly_savings) }}</span></p>
+    <p><strong>Complexité:</strong> {{ rec.implementation_complexity }} | <strong>Durée:</strong> {{ rec.implementation_time_days }} jours</p>
+    <p><strong>Risque:</strong> {{ rec.risk_level }}</p>
+</div>
+
+{% if loop.index % 5 == 0 %}
+<div class="page-break"></div>
+{% endif %}
+{% endfor %}
+
+{% endblock %}
+
