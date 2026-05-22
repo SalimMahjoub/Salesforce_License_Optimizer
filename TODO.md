@@ -14,18 +14,41 @@
 
 ---
 
-## 📊 Progression Globale
+## 📊 Progression Globale (mise à jour Sprint 0)
 
 ```
-Phase 1 - Setup & Infra      [░░░░░░░░░░] 0%
-Phase 2 - Data Collection    [░░░░░░░░░░] 0%
-Phase 3 - Classification     [░░░░░░░░░░] 0%
-Phase 4 - Intelligence GPT-4 [░░░░░░░░░░] 0%
-Phase 5 - Dashboard React    [░░░░░░░░░░] 0%
-Phase 6 - PDF Generator      [░░░░░░░░░░] 0%
-Phase 7 - Monitoring 24/7    [░░░░░░░░░░] 0%
-Phase 8 - Tracking ROI       [░░░░░░░░░░] 0%
+Phase 0 - Sprint 0 hardening [██████████] 100% ✅  (sécurité, CI, alignement)
+Phase 1 - Setup & Infra      [█████████░]  90% ✅  (manque: migrations Alembic)
+Phase 2 - Data Collection    [████████░░]  80% ⚠️  (code prêt, non testé contre vraie org)
+Phase 3 - Classification     [█████████░]  90% ✅  (taxonomie alignée Sprint 0)
+Phase 4 - Intelligence GPT-4 [██████░░░░]  60% ⚠️  (client OK, pas de cache Redis, pas de budget guard)
+Phase 5 - Dashboard React    [███░░░░░░░]  30% ❌  (squelette, 0 appel API réel)
+Phase 6 - PDF Generator      [████░░░░░░]  40% ⚠️  (templates HTML présents, service stub)
+Phase 7 - Monitoring 24/7    [██░░░░░░░░]  20% ❌  (PermissionMonitor existe, non câblé)
+Phase 8 - Tracking ROI       [███░░░░░░░]  30% ⚠️  (modèle DB OK, service stub)
 ```
+
+> **Source de vérité :** ce tableau, pas les autres MD. Mis à jour par audit interne.
+
+---
+
+## ✅ Sprint 0 — Hardening (terminé)
+
+- [x] Sécurité : `.env.example` à la racine + backend + frontend, secrets requis dans docker-compose (fail-fast)
+- [x] Alembic : URL DB lue depuis `$DATABASE_URL`, plus en clair dans `.ini`
+- [x] OAuth : `ENCRYPTION_KEY` persistante (Fernet) — tokens survivent au restart
+- [x] Taxonomie `UserCategory` unifiée (`INACTIVE/UNDERUTILIZED/OPTIMIZABLE/EFFICIENT`)
+- [x] `SfUser`/`ClassifiedUser` : champs alignés sur les tests et le factory
+- [x] `SalesforceRepository._query` : `asyncio.to_thread` pour ne plus bloquer l'event loop
+- [x] SOQL injection corrigée sur `UserType` (whitelist)
+- [x] Imports remontés en tête (event_bus, collection_service)
+- [x] `router.py` vide supprimé (api_router déjà exporté par `__init__.py`)
+- [x] FastAPI : `@app.on_event` → `lifespan` ; Pydantic v2 `model_config`
+- [x] Tests : `conftest.py` injecte env vars dummy → pytest tourne sans `.env`
+- [x] CI GitHub Actions : lint (ruff/black) + tests + typecheck frontend + build Docker + gitleaks
+- [x] Pre-commit : gitleaks ajouté
+
+**Reste pour quitter le mode POC :** migrations Alembic réelles, slice vertical "zombies" branché de bout en bout (Sprint 1).
 
 ---
 

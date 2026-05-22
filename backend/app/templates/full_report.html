@@ -12,8 +12,8 @@
 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
     <div class="stat-box">
         <h3>Économies Mensuelles Potentielles</h3>
-        <div class="stat-value">${{ "%.2f"|format(monthly_savings) }}</div>
-        <p style="color: #666;">Économies annuelles: ${{ "%.2f"|format(annual_savings) }}</p>
+        <div class="stat-value">{{ "%.0f"|format(monthly_savings) }} €</div>
+        <p style="color: #666;">Économies annuelles: {{ "%.0f"|format(annual_savings) }} €</p>
     </div>
     
     <div class="stat-box">
@@ -55,7 +55,7 @@
             </td>
             <td>{{ rec.type }}</td>
             <td>{{ rec.username }}</td>
-            <td>${{ "%.2f"|format(rec.monthly_savings) }}</td>
+            <td>{{ "%.0f"|format(rec.monthly_savings) }} €</td>
             <td style="font-size: 11px;">{{ rec.title[:50] }}...</td>
         </tr>
         {% endfor %}
@@ -176,7 +176,7 @@
         <li>{{ rationale }}</li>
         {% endfor %}
     </ul>
-    <p><strong>Économie mensuelle:</strong> <span style="color: #22c55e; font-size: 20px;">${{ "%.2f"|format(rec.monthly_savings) }}</span></p>
+    <p><strong>Économie mensuelle:</strong> <span style="color: #22c55e; font-size: 20px;">{{ "%.0f"|format(rec.monthly_savings) }} €</span></p>
     <p><strong>Complexité:</strong> {{ rec.implementation_complexity }} | <strong>Durée:</strong> {{ rec.implementation_time_days }} jours</p>
     <p><strong>Risque:</strong> {{ rec.risk_level }}</p>
 </div>

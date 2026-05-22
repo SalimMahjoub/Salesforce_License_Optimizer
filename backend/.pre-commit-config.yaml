@@ -30,3 +30,9 @@ repos:
         additional_dependencies: [types-all]
         args: [--ignore-missing-imports]
 
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+        name: Detect hardcoded secrets
+

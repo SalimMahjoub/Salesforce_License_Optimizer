@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "salesforce": {
+      "command": "C:\\Users\\Selim Mahjoub\\AppData\\Local\\nvm\\v22.22.2\\sf-mcp-server.cmd",
+      "args": [
+        "--orgs",
+        "selim.mahjoub-sc@airliquide.com.hhc.emea.devselim",
+        "--toolsets",
+        "orgs,metadata,data,testing,users",
+        "--allow-non-ga-tools"
+      ]
+    }
+  }
+}

@@ -1,262 +1,299 @@
-"""
-Action Plan Generator using GPT-4.
+"""CFO-facing action plan generator (GPT-4 backed).
 
-Generates detailed, actionable optimization plans based on recommendations.
+Adds Redis caching and a per-tenant daily budget guard on top of the raw
+GPT-4 client. Falls back to a deterministic plan when:
+- OPENAI_API_KEY is unset,
+- the GPT call fails, or
+- the daily token budget is exhausted.
 """
+from __future__ import annotations
+
+import json
 import logging
-from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
+from decimal import Decimal
+from typing import List, Optional
 
-from app.models.recommendation import Recommendation, ActionPlan
-from app.clients.gpt4_client import GPT4Client
+import hashlib
+
+from app.clients.gpt4_client import GPT4Client, gpt4_client
+from app.config import get_settings
+from app.models.recommendation import (
+    ActionPlan,
+    PlanRisk,
+    PlanStep,
+    Priority,
+    Recommendation,
+)
+from app.services.cache import get_cache
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
 
-class PlanGenerator:
-    """
-    Service for generating AI-powered action plans.
-    
-    Uses GPT-4 to transform technical recommendations into
-    business-friendly, step-by-step action plans.
-    """
-    
-    SYSTEM_PROMPT = """Tu es un expert en optimisation des licences SaaS et en transformation digitale.
-Ta mission est de transformer des recommandations techniques en plans d'action concrets, 
-détaillés et faciles à exécuter pour des managers non-techniques.
+SYSTEM_PROMPT = """Tu es un expert en optimisation des licences SaaS et en transformation digitale.
+Ta mission : transformer une liste de recommandations techniques en plan d'action
+exécutable pour un CFO non technique.
 
-Principes:
+Principes :
 - Sois précis et actionnable
-- Explique les risques et bénéfices
-- Propose des étapes claires et ordonnées
-- Inclus des critères de validation
-- Reste professionnel et concis"""
-    
-    def __init__(self, gpt4_client: GPT4Client):
-        """
-        Initialize plan generator.
-        
-        Args:
-            gpt4_client: GPT-4 client for AI generation
-        """
-        self.gpt4_client = gpt4_client
-    
-    async def generate_plan(
-        self,
-        recommendations: List[Recommendation],
-        context: dict = None
-    ) -> ActionPlan:
-        """
-        Generate comprehensive action plan from recommendations.
-        
-        Args:
-            recommendations: List of recommendations to plan
-            context: Optional context (org info, constraints)
-            
-        Returns:
-            ActionPlan with detailed steps
-        """
-        logger.info(f"Generating action plan for {len(recommendations)} recommendations")
-        
-        # Build prompt
-        prompt = self._build_prompt(recommendations, context)
-        
-        # Call GPT-4
-        response = await self.gpt4_client.complete(
-            prompt=prompt,
-            system_prompt=self.SYSTEM_PROMPT,
-            temperature=0.5  # Lower for more focused output
-        )
-        
-        # Parse response into ActionPlan
-        plan = self._parse_response(response, recommendations)
-        
-        logger.info(f"Generated plan with {len(plan.steps)} steps")
-        
-        return plan
-    
-    def _build_prompt(
-        self,
-        recommendations: List[Recommendation],
-        context: dict = None
-    ) -> str:
-        """Build structured prompt from recommendations."""
-        
-        # Group by priority
-        critical = [r for r in recommendations if r.priority.value == "CRITICAL"]
-        high = [r for r in recommendations if r.priority.value == "HIGH"]
-        medium = [r for r in recommendations if r.priority.value == "MEDIUM"]
-        
-        prompt_parts = [
-            "# Mission: Créer un plan d'action d'optimisation des licences Salesforce\n",
-            f"## Contexte",
-            f"- Nombre total de recommandations: {len(recommendations)}",
-            f"- Économies totales potentielles: {sum(r.monthly_savings for r in recommendations):.2f}$/mois",
-            f"- Économies annuelles: {sum(r.annual_savings for r in recommendations):.2f}$\n"
-        ]
-        
-        if context:
-            prompt_parts.append(f"- Organisation: {context.get('org_name', 'N/A')}")
-            prompt_parts.append(f"- Nombre d'utilisateurs: {context.get('total_users', 'N/A')}\n")
-        
-        # Critical recommendations
-        if critical:
-            prompt_parts.append("\n## Recommandations CRITIQUES:")
-            for i, rec in enumerate(critical[:5], 1):  # Max 5
-                prompt_parts.append(
-                    f"{i}. {rec.title} - Utilisateur: {rec.username} "
-                    f"(Économie: {rec.monthly_savings}$/mois)"
-                )
-        
-        # High priority
-        if high:
-            prompt_parts.append("\n## Recommandations HAUTE priorité:")
-            for i, rec in enumerate(high[:5], 1):
-                prompt_parts.append(
-                    f"{i}. {rec.title} - Utilisateur: {rec.username} "
-                    f"(Économie: {rec.monthly_savings}$/mois)"
-                )
-        
-        # Medium priority
-        if medium:
-            prompt_parts.append("\n## Recommandations MOYENNE priorité:")
-            for i, rec in enumerate(medium[:3], 1):
-                prompt_parts.append(
-                    f"{i}. {rec.title} - Utilisateur: {rec.username} "
-                    f"(Économie: {rec.monthly_savings}$/mois)"
-                )
-        
-        prompt_parts.append("\n## Instructions:")
-        prompt_parts.append("""
-Génère un plan d'action structuré avec:
-1. Un titre percutant
-2. Un executive summary (3-4 phrases)
-3. Des étapes concrètes et priorisées avec:
-   - Description claire
-   - Durée estimée
-   - Ressources nécessaires
-   - Critères de validation
-4. Des quick wins (actions immédiates)
-5. Des risques identifiés et mitigation
-6. Un calendrier réaliste sur 30-90 jours
+- Quantifie les bénéfices et les risques
+- Priorise par impact financier
+- Reste professionnel et concis
+- Réponds uniquement avec du JSON valide (pas de markdown wrappers)"""
 
-Format: JSON avec les champs suivants:
-{
-  "title": "...",
-  "executive_summary": "...",
-  "steps": [
-    {
-      "title": "...",
-      "description": "...",
-      "duration_days": X,
-      "resources": ["...", "..."],
-      "success_criteria": ["...", "..."]
-    }
-  ],
-  "quick_wins": ["...", "..."],
-  "risks": [
-    {
-      "risk": "...",
-      "mitigation": "..."
-    }
-  ],
-  "timeline": "..."
-}
-""")
-        
-        return "\n".join(prompt_parts)
-    
-    def _parse_response(
+
+class PlanGenerator:
+    """Orchestrates GPT-4 calls + safety nets to produce an ActionPlan."""
+
+    # Conservative daily token cap per process instance.
+    # In production this should be per-tenant in Redis; kept simple for now.
+    DEFAULT_DAILY_TOKEN_BUDGET = 200_000
+
+    def __init__(
         self,
-        response: str,
-        recommendations: List[Recommendation]
+        gpt4: Optional[GPT4Client] = None,
+        daily_token_budget: int = DEFAULT_DAILY_TOKEN_BUDGET,
+    ):
+        self.gpt4 = gpt4 or gpt4_client
+        self.daily_token_budget = daily_token_budget
+        self._budget_window_start = utcnow()
+        self._tokens_spent_today = 0
+
+    async def generate(
+        self,
+        recommendations: List[Recommendation],
+        org_name: str = "Organization",
+        total_users: int = 0,
     ) -> ActionPlan:
-        """Parse GPT-4 response into ActionPlan object."""
-        import json
-        from decimal import Decimal
-        
-        try:
-            # Try to extract JSON from response
-            # GPT-4 might wrap it in ```json ... ```
-            if "```json" in response:
-                json_start = response.index("```json") + 7
-                json_end = response.rindex("```")
-                response = response[json_start:json_end].strip()
-            
-            data = json.loads(response)
-            
-            total_savings = sum(r.monthly_savings for r in recommendations)
-            annual_savings = sum(r.annual_savings for r in recommendations)
-            
-            return ActionPlan(
-                title=data.get("title", "Plan d'optimisation des licences"),
-                executive_summary=data.get("executive_summary", ""),
-                steps=data.get("steps", []),
-                quick_wins=data.get("quick_wins", []),
-                risks=data.get("risks", []),
-                timeline=data.get("timeline", "30-90 jours"),
-                total_estimated_savings=Decimal(str(total_savings)),
-                annual_estimated_savings=Decimal(str(annual_savings)),
-                generated_at=datetime.utcnow()
+        """Return an ActionPlan, always — never raises to the caller."""
+        settings = get_settings()
+        total_savings = _sum(r.monthly_savings for r in recommendations)
+        annual_savings = _sum(r.annual_savings for r in recommendations)
+
+        # --- guard rails -------------------------------------------------
+        if not settings.openai_api_key or settings.openai_api_key.startswith("sk-test"):
+            logger.info("OpenAI key missing/test → returning fallback plan")
+            return _fallback_plan(recommendations, total_savings, annual_savings)
+
+        if not self._within_budget():
+            logger.warning(
+                "Daily GPT-4 budget reached (%d tokens) — using fallback",
+                self.daily_token_budget,
             )
-            
-        except Exception as e:
-            logger.error(f"Failed to parse GPT-4 response: {e}")
-            
-            # Fallback to simple plan
-            return self._create_fallback_plan(recommendations)
-    
-    def _create_fallback_plan(
-        self,
-        recommendations: List[Recommendation]
-    ) -> ActionPlan:
-        """Create fallback plan if GPT-4 parsing fails."""
-        from decimal import Decimal
-        
-        steps = [
-            {
-                "title": "Phase 1: Audit et validation",
-                "description": "Valider les recommandations avec les managers",
-                "duration_days": 5,
-                "resources": ["IT Manager", "Finance"],
-                "success_criteria": ["Approbation des recommendations"]
-            },
-            {
-                "title": "Phase 2: Implémentation",
-                "description": "Appliquer les changements de licences",
-                "duration_days": 10,
-                "resources": ["Admin Salesforce"],
-                "success_criteria": ["Licences modifiées", "Utilisateurs notifiés"]
-            },
-            {
-                "title": "Phase 3: Suivi",
-                "description": "Monitorer l'impact et ajuster",
-                "duration_days": 15,
-                "resources": ["IT Manager"],
-                "success_criteria": ["Économies réalisées", "Aucun incident"]
-            }
-        ]
-        
-        total_savings = sum(r.monthly_savings for r in recommendations)
-        annual_savings = sum(r.annual_savings for r in recommendations)
-        
+            return _fallback_plan(recommendations, total_savings, annual_savings)
+
+        # --- distributed cache check -------------------------------------
+        prompt = _build_prompt(recommendations, org_name, total_users)
+        cache = get_cache()
+        cache_key = "plan:" + hashlib.sha256(prompt.encode()).hexdigest()
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            plan = _parse_plan(cached)
+            if plan is not None:
+                logger.info("Plan cache HIT (%s)", cache_key[:20])
+                plan.total_estimated_savings = total_savings
+                plan.annual_estimated_savings = annual_savings
+                plan.model_version = f"{settings.openai_model}+cache"
+                return plan
+
+        # --- call GPT-4 --------------------------------------------------
+        try:
+            raw = await self.gpt4.complete(
+                prompt=prompt,
+                system_prompt=SYSTEM_PROMPT,
+                temperature=0.4,
+                use_cache=False,  # we manage the cache one level up
+            )
+        except Exception as exc:  # noqa: BLE001 — any failure → fallback
+            logger.warning("GPT-4 call failed: %s — using fallback", exc)
+            return _fallback_plan(recommendations, total_savings, annual_savings)
+
+        # Track tokens consumed by GPT4Client (best-effort).
+        self._tokens_spent_today = self.gpt4.total_tokens_used
+
+        plan = _parse_plan(raw)
+        if plan is None:
+            logger.warning("Could not parse GPT-4 JSON — using fallback")
+            return _fallback_plan(recommendations, total_savings, annual_savings)
+
+        # Store the raw GPT JSON in cache for 24h (CFO plans are stable)
+        await cache.set(cache_key, raw, ttl_seconds=86_400)
+
+        plan.total_estimated_savings = total_savings
+        plan.annual_estimated_savings = annual_savings
+        plan.model_version = settings.openai_model
+        return plan
+
+    # ------------------------------------------------------------------ budget
+    def _within_budget(self) -> bool:
+        if utcnow() - self._budget_window_start > timedelta(hours=24):
+            # Roll the window
+            self._budget_window_start = utcnow()
+            self._tokens_spent_today = 0
+        return self._tokens_spent_today < self.daily_token_budget
+
+
+# ---------------------------------------------------------------------- helpers
+
+
+def _sum(values) -> Decimal:
+    total = Decimal("0")
+    for v in values:
+        total += v
+    return total
+
+
+def _build_prompt(
+    recommendations: List[Recommendation],
+    org_name: str,
+    total_users: int,
+) -> str:
+    critical = [r for r in recommendations if r.priority == Priority.CRITICAL][:5]
+    high = [r for r in recommendations if r.priority == Priority.HIGH][:5]
+    medium = [r for r in recommendations if r.priority == Priority.MEDIUM][:3]
+
+    def _line(rec: Recommendation) -> str:
+        return f"- {rec.title} — {rec.username} (économie {rec.monthly_savings}€/mois)"
+
+    sections = [
+        "# Mission : plan d'action d'optimisation des licences Salesforce",
+        f"## Contexte",
+        f"- Organisation : {org_name}",
+        f"- Utilisateurs analysés : {total_users}",
+        f"- Recommandations totales : {len(recommendations)}",
+        f"- Économies potentielles : {sum(r.monthly_savings for r in recommendations):.2f}€/mois",
+    ]
+    if critical:
+        sections.append("\n## Recommandations CRITIQUES")
+        sections.extend(_line(r) for r in critical)
+    if high:
+        sections.append("\n## Recommandations HAUTE priorité")
+        sections.extend(_line(r) for r in high)
+    if medium:
+        sections.append("\n## Recommandations MOYENNE priorité")
+        sections.extend(_line(r) for r in medium)
+
+    sections.append(
+        "\n## Format attendu (JSON STRICT, sans markdown wrapper)\n"
+        '{"title":"string","executive_summary":"string",'
+        '"steps":[{"title":"string","description":"string","duration_days":int,'
+        '"resources":["string"],"success_criteria":["string"]}],'
+        '"quick_wins":["string"],'
+        '"risks":[{"risk":"string","mitigation":"string"}],'
+        '"timeline":"string"}'
+    )
+    return "\n".join(sections)
+
+
+def _parse_plan(raw: str) -> Optional[ActionPlan]:
+    """Best-effort JSON parsing tolerant of ```json fences."""
+    text = raw.strip()
+    if text.startswith("```"):
+        # Strip ``` fences
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+
+    try:
         return ActionPlan(
-            title="Plan d'optimisation des licences Salesforce",
-            executive_summary=f"Plan d'action pour optimiser {len(recommendations)} licences avec une économie potentielle de {total_savings:.2f}$/mois.",
-            steps=steps,
-            quick_wins=["Désactiver les utilisateurs inactifs", "Downgrade des licences sous-utilisées"],
-            risks=[
-                {
-                    "risk": "Perturbation de l'accès utilisateur",
-                    "mitigation": "Communication préalable et validation manager"
-                }
-            ],
-            timeline="30 jours",
-            total_estimated_savings=Decimal(str(total_savings)),
-            annual_estimated_savings=Decimal(str(annual_savings)),
-            generated_at=datetime.utcnow()
+            title=data.get("title") or "Plan d'optimisation des licences Salesforce",
+            executive_summary=data.get("executive_summary", ""),
+            steps=[PlanStep(**s) for s in data.get("steps", [])],
+            quick_wins=list(data.get("quick_wins", [])),
+            risks=[PlanRisk(**r) for r in data.get("risks", [])],
+            timeline=data.get("timeline", "30-90 jours"),
         )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("ActionPlan validation failed: %s", exc)
+        return None
 
 
-# Default instance
-plan_generator = PlanGenerator(gpt4_client=None)  # Will be injected
+def _fallback_plan(
+    recommendations: List[Recommendation],
+    total_savings: Decimal,
+    annual_savings: Decimal,
+) -> ActionPlan:
+    """Deterministic plan returned when GPT-4 is unavailable."""
+    critical_count = sum(1 for r in recommendations if r.priority == Priority.CRITICAL)
+    return ActionPlan(
+        title="Plan d'optimisation des licences Salesforce",
+        executive_summary=(
+            f"Analyse de {len(recommendations)} recommandations sur les licences "
+            f"Salesforce. Économies mensuelles potentielles : {total_savings:.0f}€ "
+            f"({annual_savings:.0f}€/an). {critical_count} actions critiques à "
+            f"traiter en priorité."
+        ),
+        steps=[
+            PlanStep(
+                title="Phase 1 — Validation des recommandations critiques",
+                description=(
+                    "Revoir avec les managers métier les utilisateurs zombies "
+                    "et inactifs pour confirmation de désactivation."
+                ),
+                duration_days=5,
+                resources=["IT Manager", "Finance", "Managers métier"],
+                success_criteria=[
+                    "Liste des utilisateurs à désactiver validée",
+                    "Plan de communication aux utilisateurs prêt",
+                ],
+            ),
+            PlanStep(
+                title="Phase 2 — Désactivation et downgrade",
+                description=(
+                    "Appliquer les actions critiques + downgrade des licences "
+                    "sous-utilisées vers Platform ou Free."
+                ),
+                duration_days=10,
+                resources=["Administrateur Salesforce"],
+                success_criteria=[
+                    "Tous les utilisateurs critiques traités",
+                    "Coûts mensuels réduits conformément aux estimations",
+                ],
+            ),
+            PlanStep(
+                title="Phase 3 — Suivi et mesure du ROI",
+                description=(
+                    "Vérifier après 30 jours qu'aucun ticket utilisateur n'est "
+                    "lié au changement et confirmer les économies réalisées."
+                ),
+                duration_days=30,
+                resources=["IT Manager", "Finance"],
+                success_criteria=[
+                    "Économies réalisées ≥ 80 % de l'estimation",
+                    "< 5 % de demandes de réactivation",
+                ],
+            ),
+        ],
+        quick_wins=[
+            "Désactiver immédiatement les utilisateurs jamais connectés",
+            "Downgrade des licences Sales Cloud vers Platform pour les profils admin uniquement",
+            "Auditer mensuellement les licences Einstein non utilisées",
+        ],
+        risks=[
+            PlanRisk(
+                risk="Réactivation tardive d'utilisateurs désactivés à tort",
+                mitigation="Conserver les profils + permissions 90 jours avant suppression définitive",
+            ),
+            PlanRisk(
+                risk="Résistance des équipes commerciales au downgrade",
+                mitigation="Communication amont + démonstration que les features critiques restent accessibles",
+            ),
+        ],
+        timeline="45 jours (Phase 1 → Phase 3)",
+        total_estimated_savings=total_savings,
+        annual_estimated_savings=annual_savings,
+        model_version="fallback",
+    )
+
+
+# Default singleton
+plan_generator = PlanGenerator()

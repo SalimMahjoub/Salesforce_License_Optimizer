@@ -5,6 +5,7 @@ from typing import List, Dict
 from datetime import datetime, timedelta
 
 from app.repositories.salesforce.base import SalesforceRepository
+from app.utils.time import utcnow
 
 
 class LoginEventRepository(SalesforceRepository[dict]):
@@ -23,7 +24,7 @@ class LoginEventRepository(SalesforceRepository[dict]):
     async def get_all(self, **filters) -> List[dict]:
         """Get all login events with filters."""
         days = filters.get('days', 90)
-        date_limit = datetime.utcnow() - timedelta(days=days)
+        date_limit = utcnow() - timedelta(days=days)
         
         soql = self._build_soql(
             fields=self.QUERY_FIELDS,
@@ -36,7 +37,7 @@ class LoginEventRepository(SalesforceRepository[dict]):
     
     async def get_by_user(self, user_id: str, days: int = 90) -> List[dict]:
         """Get login events for specific user."""
-        date_limit = datetime.utcnow() - timedelta(days=days)
+        date_limit = utcnow() - timedelta(days=days)
         
         soql = self._build_soql(
             fields=self.QUERY_FIELDS,

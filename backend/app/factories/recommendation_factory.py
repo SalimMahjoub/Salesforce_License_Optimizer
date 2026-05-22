@@ -83,11 +83,15 @@ class RecommendationFactory:
     ) -> List[Recommendation]:
         """
         Generate recommendations for INACTIVE users (score 0-30).
-        
+
         Primary actions: Deactivate or downgrade license.
+
+        Guarantee: every INACTIVE user receives at least one cost-reducing
+        recommendation. Rules 1-3 cover the common patterns; a catch-all at
+        the end ensures we never silently skip a zombie.
         """
-        recs = []
-        
+        recs: List[Recommendation] = []
+
         # Rule 1: Never logged in → immediate deactivation
         if not metrics.last_login:
             recs.append(Recommendation(
@@ -176,9 +180,42 @@ class RecommendationFactory:
                 requires_manager_approval=True,
                 affected_workflows=[]
             ))
-        
+
+        # Catch-all: any INACTIVE user that did not match rules 1-3 still
+        # deserves a recommendation. Score ≤ 30 means usage is so low that
+        # downgrading to Platform is almost always financially sound.
+        if not recs:
+            recs.append(Recommendation(
+                user_id=user.id,
+                username=user.username,
+                license_type=user.license_type,
+                type=RecommendationType.DOWNGRADE,
+                title=f"Activité très faible (score {user.activity_score}/100)",
+                description=(
+                    f"L'utilisateur {user.username} présente une activité "
+                    f"globalement faible. Examiner la pertinence du maintien "
+                    f"de la licence {user.license_type}."
+                ),
+                rationale=[
+                    f"Score d'activité : {user.activity_score}/100",
+                    f"Connexions 90j : {metrics.login_count_90d}",
+                    "Aucune des règles spécifiques (jamais connecté, >90j, "
+                    "<5 logins) n'a déclenché — usage faible mais sporadique",
+                ],
+                expected_savings=metrics.license_cost * Decimal("0.5"),
+                monthly_savings=metrics.license_cost * Decimal("0.5"),
+                annual_savings=metrics.license_cost * Decimal("0.5") * 12,
+                priority=Priority.MEDIUM,
+                impact=ImpactLevel.MEDIUM,
+                risk_level="Moyen",
+                implementation_complexity="Moyenne",
+                implementation_time_days=5,
+                requires_manager_approval=True,
+                affected_workflows=[],
+            ))
+
         return recs
-    
+
     def _generate_underutilized_recommendations(
         self,
         user: ClassifiedUser,

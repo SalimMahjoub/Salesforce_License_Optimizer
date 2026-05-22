@@ -4,6 +4,8 @@ User metrics and usage statistics models.
 These models track user activity for scoring and classification.
 Includes detailed breakdown for explainability and audit trail.
 """
+
+from app.utils.time import utcnow
 from datetime import date, datetime, timedelta
 from typing import Optional, List, Set
 from decimal import Decimal
@@ -48,7 +50,7 @@ class UserMetrics(BaseModel):
     records_modified: int = Field(default=0, ge=0)
     
     # Metadata
-    collected_at: datetime = Field(default_factory=datetime.utcnow)
+    collected_at: datetime = Field(default_factory=utcnow)
     
     @computed_field
     @property
@@ -56,7 +58,7 @@ class UserMetrics(BaseModel):
         """Calculate days since last login."""
         if not self.last_login:
             return None
-        return (datetime.utcnow() - self.last_login).days
+        return (utcnow() - self.last_login).days
     
     @computed_field
     @property
@@ -155,7 +157,7 @@ class UsageStats(BaseModel):
     average_cost_per_user: Decimal = Field(..., ge=0)
     
     # Metadata
-    calculated_at: datetime = Field(default_factory=datetime.utcnow)
+    calculated_at: datetime = Field(default_factory=utcnow)
     
     @computed_field
     @property

@@ -89,3 +89,5 @@ alembic/versions/__pycache__/
 # OS
 Thumbs.db
 .DS_Store
+artifacts/
+frontend/dist/

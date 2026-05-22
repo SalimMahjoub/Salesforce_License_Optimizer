@@ -3,7 +3,9 @@ Event Bus implementing Observer pattern.
 
 Enables loosely-coupled event-driven architecture for notifications.
 """
+import asyncio
 import logging
+from app.utils.time import utcnow
 from typing import Callable, Dict, List
 from dataclasses import dataclass
 from datetime import datetime
@@ -31,7 +33,7 @@ class Event:
     
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.utcnow()
+            self.timestamp = utcnow()
 
 
 class EventBus:
@@ -150,5 +152,4 @@ class EventBus:
 
 
 # Singleton instance
-import asyncio
 event_bus = EventBus()

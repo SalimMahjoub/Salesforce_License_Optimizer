@@ -29,18 +29,25 @@ class UserRepository(SalesforceRepository[SfUser]):
         "IsActive"
     ]
     
+    # Whitelist of accepted UserType values to prevent SOQL injection
+    _ALLOWED_USER_TYPES = frozenset({
+        "Standard", "PowerPartner", "PowerCustomerSuccess",
+        "CustomerSuccess", "Guest", "CSPLitePortal",
+    })
+
     async def get_all(self, **filters) -> List[SfUser]:
-        """
-        Get all active users.
-        
-        Returns:
-            List of SfUser objects
-        """
+        """Get all active users (optionally filtered by user_type)."""
         where_clause = "IsActive = TRUE"
-        
-        if filters.get('user_type'):
-            where_clause += f" AND UserType = '{filters['user_type']}'"
-        
+
+        user_type = filters.get("user_type")
+        if user_type:
+            if user_type not in self._ALLOWED_USER_TYPES:
+                raise ValueError(
+                    f"Invalid user_type {user_type!r}; "
+                    f"allowed: {sorted(self._ALLOWED_USER_TYPES)}"
+                )
+            where_clause += f" AND UserType = '{user_type}'"
+
         soql = self._build_soql(
             fields=self.QUERY_FIELDS,
             sobject="User",

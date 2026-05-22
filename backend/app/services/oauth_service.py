@@ -12,6 +12,7 @@ from simple_salesforce import Salesforce
 import httpx
 
 from app.config import get_settings
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -40,11 +41,20 @@ class OAuthService:
         self.client_id = settings.sf_client_id
         self.client_secret = settings.sf_client_secret
         self.redirect_uri = settings.sf_redirect_uri
-        
-        # Token encryption
-        self._cipher = Fernet(Fernet.generate_key())
+
+        # Token encryption: use persistent key from settings when available.
+        # Falling back to an ephemeral key means tokens are unreadable across
+        # restarts (only acceptable for local dev).
+        if settings.encryption_key:
+            self._cipher = Fernet(settings.encryption_key.encode())
+        else:
+            logger.warning(
+                "ENCRYPTION_KEY not set — generating ephemeral Fernet key. "
+                "OAuth tokens will be lost on restart."
+            )
+            self._cipher = Fernet(Fernet.generate_key())
         self._tokens: Dict[str, Dict] = {}
-        
+
         self._initialized = True
     
     def get_authorization_url(self, state: Optional[str] = None) -> str:
@@ -109,7 +119,7 @@ class OAuthService:
             'access_token': encrypted_access,
             'refresh_token': encrypted_refresh,
             'instance_url': token_data['instance_url'],
-            'expires_at': datetime.utcnow() + timedelta(hours=2)
+            'expires_at': utcnow() + timedelta(hours=2)
         }
         
         logger.info(f"OAuth tokens obtained for org {org_id}")
@@ -153,7 +163,7 @@ class OAuthService:
         # Update stored token
         encrypted_access = self._encrypt_token(token_data['access_token'])
         self._tokens[org_id]['access_token'] = encrypted_access
-        self._tokens[org_id]['expires_at'] = datetime.utcnow() + timedelta(hours=2)
+        self._tokens[org_id]['expires_at'] = utcnow() + timedelta(hours=2)
         
         logger.info(f"Token refreshed for org {org_id}")
         
@@ -175,7 +185,7 @@ class OAuthService:
         token_data = self._tokens[org_id]
         
         # Check if token needs refresh
-        if datetime.utcnow() >= token_data['expires_at']:
+        if utcnow() >= token_data['expires_at']:
             access_token = await self.refresh_token(org_id)
         else:
             access_token = self._decrypt_token(token_data['access_token'])
@@ -195,6 +205,27 @@ class OAuthService:
         return self._cipher.decrypt(encrypted_token).decode()
 
 
-# Singleton instance
-oauth_service = OAuthService()
+# Lazy singleton accessor. The OAuthService constructor reads settings.* and
+# initialises Fernet — defer until first use so importing this module never
+# triggers config loading (matters for CLI scripts and tests).
+_oauth_singleton: Optional["OAuthService"] = None
+
+
+def get_oauth_service() -> "OAuthService":
+    global _oauth_singleton
+    if _oauth_singleton is None:
+        _oauth_singleton = OAuthService()
+    return _oauth_singleton
+
+
+class _LazyOAuthProxy:
+    """Backwards-compatible proxy so existing ``from ... import oauth_service``
+    callers keep working while delegating to the lazy singleton.
+    """
+
+    def __getattr__(self, name):
+        return getattr(get_oauth_service(), name)
+
+
+oauth_service = _LazyOAuthProxy()
 

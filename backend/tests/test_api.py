@@ -1,14 +1,8 @@
-"""
-Integration tests for API endpoints.
-"""
-import pytest
+"""Smoke tests for the top-level API surface."""
 
 
 class TestHealthEndpoint:
-    """Test health check endpoint."""
-    
     def test_health_check(self, client):
-        """Test health check returns 200."""
         response = client.get("/health")
         assert response.status_code == 200
         data = response.json()
@@ -18,10 +12,7 @@ class TestHealthEndpoint:
 
 
 class TestRootEndpoint:
-    """Test root endpoint."""
-    
     def test_root(self, client):
-        """Test root endpoint returns API info."""
         response = client.get("/")
         assert response.status_code == 200
         data = response.json()
@@ -30,10 +21,7 @@ class TestRootEndpoint:
 
 
 class TestAuthAPI:
-    """Test authentication API."""
-    
     def test_get_authorization_url(self, client):
-        """Test getting OAuth authorization URL."""
         response = client.get("/api/v1/auth/authorize")
         assert response.status_code == 200
         data = response.json()
@@ -41,24 +29,22 @@ class TestAuthAPI:
         assert "salesforce.com" in data["authorization_url"]
 
 
-class TestAnalyticsAPI:
-    """Test analytics API."""
-    
-    def test_get_dashboard(self, client):
-        """Test getting analytics dashboard."""
-        response = client.get("/api/v1/analytics/dashboard/test-org")
+class TestRecommendationsAPI:
+    def test_list_recommendations_demo(self, client):
+        response = client.get("/api/v1/recommendations/test-org")
         assert response.status_code == 200
         data = response.json()
-        assert "mrr" in data
-        assert "ltv" in data
-        assert "total_monthly_savings" in data
-    
-    def test_get_roi_metrics(self, client):
-        """Test getting ROI metrics."""
-        response = client.get("/api/v1/analytics/roi/test-org")
-        assert response.status_code == 200
-        data = response.json()
-        assert "baseline_cost" in data
-        assert "current_cost" in data
-        assert "roi_percentage" in data
+        assert data["org_id"] == "test-org"
+        assert data["total"] >= 0
+        assert "recommendations" in data
 
+
+class TestReportsAPI:
+    def test_cfo_plan_fallback(self, client):
+        # Test key is sk-test-* → PlanGenerator uses fallback (no GPT call)
+        response = client.get("/api/v1/reports/test-org/cfo-plan")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["title"]
+        assert len(data["steps"]) >= 1
+        assert data["model_version"] == "fallback"

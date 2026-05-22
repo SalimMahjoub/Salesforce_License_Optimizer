@@ -12,6 +12,7 @@ import httpx
 from app.config import get_settings
 from app.events.event_bus import Event, EventType
 from app.models.db.security_alert import SecurityAlert
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -106,7 +107,7 @@ class SlackNotifier(Notifier):
                         },
                         {
                             "type": "mrkdwn",
-                            "text": f"*Date:*\n{message.get('timestamp', datetime.utcnow().isoformat())}"
+                            "text": f"*Date:*\n{message.get('timestamp', utcnow().isoformat())}"
                         }
                     ]
                 }
@@ -236,7 +237,7 @@ class NotifierService:
             "title": title,
             "description": description,
             "severity": severity,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": utcnow().isoformat(),
             "metadata": metadata or {}
         }
         

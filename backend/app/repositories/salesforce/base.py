@@ -6,6 +6,7 @@ including authentication, rate limiting, and error handling.
 """
 from typing import Generic, TypeVar, Optional, Dict, Any, List
 from abc import ABC
+import asyncio
 import logging
 
 from simple_salesforce import Salesforce
@@ -67,7 +68,8 @@ class SalesforceRepository(BaseRepository[T], ABC, Generic[T]):
         """
         try:
             self._logger.debug(f"Executing SOQL: {soql}")
-            result = self.sf_client.query_all(soql)
+            # simple-salesforce is sync; offload to thread to avoid blocking the loop
+            result = await asyncio.to_thread(self.sf_client.query_all, soql)
             records = result.get('records', [])
             self._logger.info(f"Query returned {len(records)} records")
             return records

@@ -50,6 +50,8 @@ services:
       APP_ENV: development
       DEBUG: "true"
       LOG_LEVEL: INFO
+      # Data source: "demo" (no SF) or "salesforce" (requires OAuth creds)
+      DATA_PROVIDER: ${DATA_PROVIDER:-demo}
       
       # Database
       DATABASE_URL: postgresql+asyncpg://slo_user:slo_password@db:5432/license_optimizer
@@ -58,23 +60,24 @@ services:
       # Redis
       REDIS_URL: redis://redis:6379/0
       
-      # Salesforce OAuth (use your own credentials)
-      SF_CLIENT_ID: ${SF_CLIENT_ID:-your_connected_app_client_id}
-      SF_CLIENT_SECRET: ${SF_CLIENT_SECRET:-your_connected_app_client_secret}
+      # Salesforce OAuth — required, no defaults (fail fast if missing)
+      SF_CLIENT_ID: ${SF_CLIENT_ID:?SF_CLIENT_ID is required (see .env.example)}
+      SF_CLIENT_SECRET: ${SF_CLIENT_SECRET:?SF_CLIENT_SECRET is required}
       SF_REDIRECT_URI: ${SF_REDIRECT_URI:-http://localhost:8000/oauth/callback}
-      
-      # OpenAI
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-your-api-key-here}
-      
-      # Notifications
+
+      # OpenAI — required
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+
+      # Notifications (optional)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      SMTP_HOST: ${SMTP_HOST:-smtp.example.com}
+      SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      
-      # Security
-      SECRET_KEY: ${SECRET_KEY:-your-secret-key-for-jwt-minimum-32-characters-please-change-in-production}
+
+      # Security — required, fail fast
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required (min 32 chars)}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY is required (Fernet 44-char base64)}
       CORS_ORIGINS: '["http://localhost:3000", "http://localhost:8000"]'
     volumes:
       - ./backend:/app
@@ -87,6 +90,22 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - slo-network
+
+  # React Frontend (Nginx serving the Vite build)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    container_name: slo-frontend
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:80"
     networks:
       - slo-network
 

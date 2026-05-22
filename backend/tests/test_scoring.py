@@ -25,7 +25,7 @@ class TestDefaultScoringStrategy:
             period_end=date(2024, 2, 1),
             last_login=date.today(),  # Today = 30 points
             login_count_90d=90,  # ~20 points
-            features_used=set(range(80)),  # 80% = 24 points
+            features_used={f"feature_{i}" for i in range(80)},  # 80% = 24 points
             total_features_available=100,
             records_created=50,  # 10 points
             records_modified=50   # 10 points

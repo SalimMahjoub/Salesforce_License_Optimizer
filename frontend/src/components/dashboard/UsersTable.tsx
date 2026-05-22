@@ -1,58 +1,38 @@
 import { Badge } from '../ui/Badge'
 import { formatDate } from '../../lib/utils'
-
-interface User {
-  id: string
-  username: string
-  email: string
-  license_type: string
-  activity_score: number
-  category: string
-  last_login_date: string | null
-}
+import type { ClassifiedUser, UserCategory } from '../../lib/types'
 
 interface UsersTableProps {
-  users: User[]
+  users: ClassifiedUser[]
   loading?: boolean
+  emptyMessage?: string
 }
 
-export function UsersTable({ users, loading = false }: UsersTableProps) {
-  const getCategoryVariant = (category: string) => {
-    switch (category) {
-      case 'EFFICIENT':
-        return 'success'
-      case 'OPTIMIZABLE':
-        return 'default'
-      case 'UNDERUTILIZED':
-        return 'warning'
-      case 'INACTIVE':
-        return 'danger'
-      default:
-        return 'default'
-    }
-  }
+const CATEGORY_VARIANT: Record<UserCategory, 'success' | 'default' | 'warning' | 'danger'> = {
+  efficient: 'success',
+  optimizable: 'default',
+  underutilized: 'warning',
+  inactive: 'danger',
+}
 
-  const getCategoryLabel = (category: string) => {
-    switch (category) {
-      case 'EFFICIENT':
-        return 'Efficace'
-      case 'OPTIMIZABLE':
-        return 'Optimisable'
-      case 'UNDERUTILIZED':
-        return 'Sous-utilisé'
-      case 'INACTIVE':
-        return 'Inactif'
-      default:
-        return category
-    }
-  }
+const CATEGORY_LABEL: Record<UserCategory, string> = {
+  efficient: 'Efficace',
+  optimizable: 'Optimisable',
+  underutilized: 'Sous-utilisé',
+  inactive: 'Inactif',
+}
 
+export function UsersTable({
+  users,
+  loading = false,
+  emptyMessage = 'Aucun utilisateur',
+}: UsersTableProps) {
   if (loading) {
-    return <div className="p-8 text-center text-gray-500">Chargement...</div>
+    return <div className="p-8 text-center text-gray-500" aria-live="polite">Chargement…</div>
   }
 
   if (!users.length) {
-    return <div className="p-8 text-center text-gray-500">Aucun utilisateur</div>
+    return <div className="p-8 text-center text-gray-500">{emptyMessage}</div>
   }
 
   return (
@@ -82,19 +62,23 @@ export function UsersTable({ users, loading = false }: UsersTableProps) {
             <tr key={user.id} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap">
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{user.username}</div>
-                  <div className="text-sm text-gray-500">{user.email}</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {user.full_name ?? user.username}
+                  </div>
+                  <div className="text-sm text-gray-500">{user.email ?? user.username}</div>
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm text-gray-900">{user.license_type}</div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <div className="text-sm font-semibold text-gray-900">{user.activity_score}/100</div>
+                <div className="text-sm font-semibold text-gray-900">
+                  {user.activity_score}/100
+                </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <Badge variant={getCategoryVariant(user.category)}>
-                  {getCategoryLabel(user.category)}
+                <Badge variant={CATEGORY_VARIANT[user.category]}>
+                  {CATEGORY_LABEL[user.category]}
                 </Badge>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -107,4 +91,3 @@ export function UsersTable({ users, loading = false }: UsersTableProps) {
     </div>
   )
 }
-

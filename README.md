@@ -1,215 +1,152 @@
-# 🏗️ Salesforce License Optimizer
+# Salesforce License Optimizer
 
-> **"Le Chirurgien des Budgets Salesforce"**  
-> Optimisation financière automatique des licences Salesforce  
-> Stack: Python 3.12 + FastAPI + PostgreSQL + React + GPT-4
-
----
-
-## 📋 Overview
-
-Salesforce License Optimizer analyzes license usage patterns and identifies optimization opportunities that can save 20-40% on Salesforce licensing costs.
-
-**Key Features:**
-- Automated data collection from 5-6 Salesforce APIs
-- AI-powered classification using scoring algorithms
-- GPT-4 generated action plans for CFOs
-- Real-time security monitoring
-- ROI tracking with commission calculation
+> **« Le chirurgien des budgets Salesforce »**
+> FastAPI + React + GPT-4 + WeasyPrint. Détecte 20-40 % d'économies sur les licences SF.
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker & Docker Compose
-- Git
-
-### 1. Clone the Repository
+## Quickstart (3 minutes, sans Salesforce)
 
 ```bash
-git clone <repository-url>
+git clone <repo>
 cd SalesforceLicenseOptimizer
-```
-
-### 2. Configure Environment
-
-```bash
 cp .env.example .env
-# Edit .env with your actual credentials
-```
 
-### 3. Start All Services
+# Génère les deux clés requises
+python -c "import secrets; print('SECRET_KEY=' + secrets.token_urlsafe(48))"      >> .env
+python -c "from cryptography.fernet import Fernet; print('ENCRYPTION_KEY=' + Fernet.generate_key().decode())" >> .env
 
-```bash
+# DATA_PROVIDER=demo par défaut — pas besoin de Salesforce
 docker-compose up --build
 ```
 
-This will start:
-- **PostgreSQL** (port 5432)
-- **Redis** (port 6379)
-- **Backend API** (port 8000)
+- **Frontend** : http://localhost:3000 — login `demo@uprizon.io` / `demo-password`
+- **API docs** : http://localhost:8000/docs
+- **Health** : http://localhost:8000/health
 
-### 4. Verify Installation
+Le `DemoDataProvider` génère 800 utilisateurs réalistes à la volée — vous obtenez
+immédiatement dashboard, recommandations, plan CFO et alertes de sécurité.
+
+---
+
+## Brancher une vraie org Salesforce
+
+1. Créer une **Connected App** Salesforce (Setup > App Manager > New).
+2. Renseigner dans `.env` :
+   ```
+   DATA_PROVIDER=salesforce
+   SF_CLIENT_ID=...
+   SF_CLIENT_SECRET=...
+   SF_REDIRECT_URI=http://localhost:8000/oauth/callback
+   ```
+3. `docker-compose up`, puis ouvrir `/api/v1/auth/authorize` → callback Salesforce.
+
+---
+
+## Stack
+
+| Couche | Tech |
+|---|---|
+| Backend | FastAPI 0.115, Pydantic v2, SQLAlchemy 2 async, Alembic |
+| Données | PostgreSQL 16, Redis 7 (cache GPT-4 + slowapi) |
+| Salesforce | simple-salesforce (OAuth 2.0, OAuth tokens chiffrés Fernet) |
+| IA | OpenAI GPT-4 (PlanGenerator) + fallback déterministe |
+| PDF | WeasyPrint + Jinja2 |
+| Frontend | React 18, Vite, TypeScript strict, Tailwind, TanStack Query, Zustand |
+| Auth | JWT HS256 + bcrypt (passlib) |
+| Observabilité | logs JSON optionnels + Sentry optionnel + X-Request-ID middleware |
+| CI | GitHub Actions : ruff, black, mypy, pytest, tsc, vitest, build Docker, gitleaks |
+
+---
+
+## Architecture (vue tech lead)
+
+```
+                ┌────────────────────────────────────────────┐
+                │            React SPA (Vite)                │
+                │  Dashboard │ Zombies │ Recos │ Reports │   │
+                │            │            │ Alerts │         │
+                └───────────────────┬────────────────────────┘
+                                    │ JWT (Bearer)
+                ┌───────────────────▼────────────────────────┐
+                │           FastAPI /api/v1                  │
+                │  auth │ analysis │ recos │ reports │ alerts │
+                │   ↓ require_tenant_match (multi-tenant)    │
+                │   ↓ slowapi rate-limit                     │
+                └───────────────────┬────────────────────────┘
+                                    │
+        ┌───────────────────────────┼────────────────────────┐
+        ▼                           ▼                        ▼
+  AnalysisService            PlanGenerator (GPT-4)    PermissionMonitor
+  (cache TTL 5 min)          + Redis cache 24h        (security alerts)
+        │                           │
+        ▼                           ▼
+  DataProvider strategy       PDFService (WeasyPrint)
+  ├── DemoDataProvider
+  └── SalesforceDataProvider
+        │
+        ▼
+  simple_salesforce (OAuth + SOQL via asyncio.to_thread)
+```
+
+---
+
+## Endpoints clés
+
+| Méthode | Route | Description |
+|---|---|---|
+| POST | `/api/v1/auth/login` | Login (form `username`/`password`) → JWT |
+| GET  | `/api/v1/auth/me` | Profil du token courant |
+| GET  | `/api/v1/analysis/{org}/dashboard` | KPIs synthétiques |
+| GET  | `/api/v1/analysis/{org}/zombies` | Utilisateurs inactifs + économies |
+| GET  | `/api/v1/analysis/{org}/users?category=` | Liste paginée filtrée |
+| POST | `/api/v1/analysis/{org}/refresh` | Bypass cache (rate-limit 5/min) |
+| GET  | `/api/v1/recommendations/{org}` | Recos triées par priorité/savings |
+| GET  | `/api/v1/reports/{org}/cfo-plan` | Plan CFO GPT-4 (rate-limit 10/min) |
+| GET  | `/api/v1/reports/{org}/pdf` | PDF download (rate-limit 3/min) |
+| GET  | `/api/v1/alerts/{org}` | Alertes de sécurité (orphan admins…) |
+
+Tous les endpoints data appliquent `require_tenant_match` : le `tenant_id`
+du JWT doit matcher l'`org` de l'URL — anti-IDOR garanti par construction.
+
+---
+
+## Tests
 
 ```bash
-curl http://localhost:8000/health
-```
-
-Expected response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-12-29T..."
-}
-```
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    SALESFORCE ORG                       │
-│  User API │ LoginEvent API │ PermissionSet │ EventLog  │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│              PYTHON BACKEND (FastAPI)                   │
-│  Repositories → Services → Intelligence Layer (GPT-4)   │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-┌──────────────────────▼──────────────────────────────────┐
-│                REACT FRONTEND                           │
-│  Dashboard │ Budget Comparison │ Reports │ Alerts      │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📁 Project Structure
-
-```
-.
-├── backend/              # Python FastAPI application
-│   ├── app/
-│   │   ├── main.py       # FastAPI entry point
-│   │   ├── config.py     # Pydantic settings
-│   │   ├── models/       # Data models
-│   │   ├── repositories/ # Data access layer
-│   │   ├── services/     # Business logic
-│   │   ├── strategies/   # Scoring algorithms
-│   │   ├── factories/    # Recommendation factories
-│   │   ├── events/       # Event bus & handlers
-│   │   └── api/v1/       # API routes
-│   ├── tests/            # Test suite
-│   └── requirements.txt  # Python dependencies
-│
-├── frontend/             # React + TypeScript (Coming Soon)
-│
-├── docker-compose.yml    # Infrastructure orchestration
-├── .env.example          # Environment template
-└── README.md             # This file
-```
-
----
-
-## 🛠️ Development
-
-### Backend Development
-
-```bash
+# Backend
 cd backend
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+
+# Frontend
+cd frontend
+npm install
+npm test
 ```
 
-### Run Tests
+Le `conftest.py` provisionne des env vars dummy + 2 fixtures (`client`
+authentifié sur `test-org`, `unauth_client` pour les tests d'auth) — pas
+besoin d'infrastructure pour faire tourner la suite.
 
-```bash
-cd backend
-pytest -v --cov=app
+---
+
+## Roadmap
+
+Voir [TODO.md](TODO.md). État actuel (post Sprint 4) :
+
+```
+Phase 0 - Sprint 0 hardening    ██████████ 100%
+Phase 1 - Setup & Infra         ██████████ 100%
+Phase 2 - Data Collection       ██████████ 100% (Demo + SF providers)
+Phase 3 - Classification        ██████████ 100%
+Phase 4 - Intelligence GPT-4    ██████████ 100% (Redis cache + budget guard)
+Phase 5 - Dashboard React       ██████████ 100% (5 pages branchées API)
+Phase 6 - PDF Generator         ██████████ 100% (WeasyPrint endpoint)
+Phase 7 - Security Monitor      ██████████  90% (perm monitor v1 + alerts UI)
+Phase 8 - Auth & Multi-tenant   ██████████  90% (JWT + tenant guard, DB user store TODO)
 ```
 
-### Code Quality
-
-```bash
-# Format code
-black app/
-
-# Lint
-ruff check app/
-
-# Type checking
-mypy app/
-```
-
 ---
 
-## 📊 Business Impact
-
-**Typical Savings for 800 Users (€1.44M/year budget):**
-
-| Category | Users | Problem | Savings/year |
-|----------|-------|---------|--------------|
-| Zombies | 240 (30%) | Not connected 6+ months | €345,600 |
-| Over-licensed | 180 (22%) | Sales Cloud → Platform | €194,400 |
-| Unused Einstein | 60 (8%) | Add-on never used | €86,400 |
-| **TOTAL** | 480 users | 43% of budget | **€626,400/year** |
-
----
-
-## 🔒 Security
-
-- Zero access to business data (opportunities, contacts, accounts)
-- Only metadata and usage logs analyzed
-- Encrypted credential storage
-- 24/7 permission monitoring with alerts
-- Non-root Docker containers
-
----
-
-## 📚 Documentation
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Detailed technical architecture
-- [TODO.md](TODO.md) - Development roadmap
-
----
-
-## 🤝 Contributing
-
-This project follows enterprise-grade development practices:
-- Design patterns (Repository, Strategy, Factory, Observer)
-- Comprehensive test coverage (>80%)
-- Type safety with Pydantic v2
-- Async/await throughout
-- Docker-first development
-
----
-
-## 📝 License
-
-Copyright © 2025 Uprizon - AXIOMCORE
-
----
-
-## 🚀 Roadmap
-
-- [x] **Phase 1**: Infrastructure setup
-- [ ] **Phase 2**: Data collection engine (5-6 Salesforce APIs)
-- [ ] **Phase 3**: Classification algorithm
-- [ ] **Phase 4**: GPT-4 action plan generation
-- [ ] **Phase 5**: React dashboard
-- [ ] **Phase 6**: PDF report generator (30-40 pages)
-- [ ] **Phase 7**: 24/7 security monitoring
-- [ ] **Phase 8**: ROI tracking & billing
-
----
-
-> **Status**: Phase 1 - Infrastructure Setup Complete ✅  
-> **Last Updated**: December 29, 2025
-
+Copyright © 2026 Uprizon — AXIOMCORE

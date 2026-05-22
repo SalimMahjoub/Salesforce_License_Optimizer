@@ -3,18 +3,19 @@ GPT-4 Client with retry logic, caching, and streaming support.
 
 Implements robust error handling and performance optimizations.
 """
-import logging
 import hashlib
-import json
-from typing import Optional, AsyncIterator
-from datetime import datetime, timedelta
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+from typing import AsyncIterator, Optional
 
-from openai import AsyncOpenAI, RateLimitError, APIError
+import httpx
+from openai import APIError, AsyncOpenAI, RateLimitError
 from tenacity import (
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type
 )
 
 from app.config import get_settings
@@ -42,8 +43,15 @@ class GPT4Client:
         self.max_tokens = 2000
         self.temperature = 0.7
         
-        # Initialize OpenAI async client
-        self.client = AsyncOpenAI(api_key=self.api_key)
+        # Initialize OpenAI async client.
+        # In corporate environments with TLS inspection, the system CA bundle
+        # may reject api.openai.com. Opt-in bypass via INSECURE_TLS=1 (dev only).
+        if os.environ.get("INSECURE_TLS") == "1":
+            logger.warning("INSECURE_TLS=1 — OpenAI client running without TLS verification")
+            http_client = httpx.AsyncClient(verify=False, timeout=60.0)
+            self.client = AsyncOpenAI(api_key=self.api_key, http_client=http_client)
+        else:
+            self.client = AsyncOpenAI(api_key=self.api_key, timeout=60.0)
         
         # Simple cache: {prompt_hash: (response, expiry)}
         self._cache: dict = {}
@@ -174,7 +182,7 @@ class GPT4Client:
         
         if cache_key in self._cache:
             content, expiry = self._cache[cache_key]
-            if datetime.utcnow() < expiry:
+            if datetime.now(timezone.utc).replace(tzinfo=None) < expiry:
                 return content
             else:
                 # Expired, remove
@@ -190,7 +198,7 @@ class GPT4Client:
     ):
         """Store response in cache with TTL."""
         cache_key = self._cache_key(prompt, system_prompt)
-        expiry = datetime.utcnow() + self._cache_ttl
+        expiry = datetime.now(timezone.utc).replace(tzinfo=None) + self._cache_ttl
         self._cache[cache_key] = (content, expiry)
     
     def _cache_key(self, prompt: str, system_prompt: Optional[str]) -> str:

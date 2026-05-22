@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vite build)",
+      "Read(//c/Users/**)",
+      "Bash(poetry install:*)",
+      "Bash(poetry lock:*)",
+      "Read(//tmp/**)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(PGPASSWORD=compliance_pass_dev_only psql -h localhost -U compliance_user -d compliance_hub_dev -c \"SELECT id::text, ai_system_id::text, system_name, filename FROM documents LIMIT 5;\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Selim Mahjoub\\Documents\\Uprizon\\AXIOMCORE\\SalesforceAIActCompliance\\frontend\\src\\{api,hooks,stores,types,components"
+    ]
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true
+  }
+}

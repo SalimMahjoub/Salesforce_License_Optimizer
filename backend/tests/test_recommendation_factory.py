@@ -79,7 +79,7 @@ class TestRecommendationFactory:
             period_end=date(2024, 2, 1),
             last_login=date.today(),
             login_count_90d=80,
-            features_used=set(range(70)),
+            features_used={f"feature_{i}" for i in range(70)},
             total_features_available=100,
             records_created=50,
             records_modified=100

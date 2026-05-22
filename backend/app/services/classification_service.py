@@ -15,6 +15,7 @@ from app.models.recommendation import Recommendation
 from app.strategies.base import ScoringStrategy
 from app.strategies.default_scoring import DefaultScoringStrategy
 from app.factories.recommendation_factory import RecommendationFactory
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class ClassificationService:
             List of classified users with scores and categories
         """
         logger.info(f"Starting classification for {len(users)} users")
-        start_time = datetime.utcnow()
+        start_time = utcnow()
         
         # Create metrics lookup
         metrics_map = {m.user_id: m for m in metrics}
@@ -79,7 +80,7 @@ class ClassificationService:
             
             logger.info(f"Processed batch {i//batch_size + 1}/{(len(users)-1)//batch_size + 1}")
         
-        duration = (datetime.utcnow() - start_time).total_seconds()
+        duration = (utcnow() - start_time).total_seconds()
         logger.info(f"Classification completed in {duration:.2f}s")
         
         return classified
@@ -117,15 +118,15 @@ class ClassificationService:
         
         # Step 1: Calculate score
         score = self.scoring_strategy.calculate(metrics)
-        
+
         # Step 2: Generate breakdown
         breakdown = self.scoring_strategy.explain(metrics)
-        
-        # Step 3: Determine category
-        category = self._categorize(score)
-        
+
+        # Step 3: Determine category (single source of truth in UserCategory)
+        category = UserCategory.from_score(score)
+
         # Step 4: Create classified user
-        classified = ClassifiedUser(
+        return ClassifiedUser(
             id=user.id,
             username=user.username,
             email=user.email,
@@ -138,29 +139,9 @@ class ClassificationService:
             activity_score=score,
             category=category,
             score_breakdown=breakdown,
-            classified_at=datetime.utcnow()
+            license_cost_monthly=metrics.license_cost,
+            classified_at=utcnow(),
         )
-        
-        return classified
-    
-    def _categorize(self, score: int) -> UserCategory:
-        """
-        Categorize user based on activity score.
-        
-        Categories:
-        - INACTIVE: 0-30 (never/rarely used)
-        - UNDERUTILIZED: 31-55 (low usage)
-        - OPTIMIZABLE: 56-75 (medium usage)
-        - EFFICIENT: 76-100 (optimal usage)
-        """
-        if score <= 30:
-            return UserCategory.INACTIVE
-        elif score <= 55:
-            return UserCategory.UNDERUTILIZED
-        elif score <= 75:
-            return UserCategory.OPTIMIZABLE
-        else:
-            return UserCategory.EFFICIENT
     
     def _create_default_metrics(self, user: SfUser) -> UserMetrics:
         """Create default metrics when none available."""

@@ -5,8 +5,11 @@ Implements Chain of Responsibility pattern for data collection pipeline.
 """
 import logging
 import asyncio
+from decimal import Decimal
 from typing import List, Dict
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
+
+from app.models.license import LICENSE_CATALOG
 
 from app.repositories.user_repository import UserRepository
 from app.repositories.salesforce.login_repository import LoginEventRepository
@@ -14,6 +17,7 @@ from app.repositories.salesforce.permission_repository import PermissionReposito
 from app.models.user import SfUser
 from app.models.metrics import UserMetrics
 from app.services.oauth_service import OAuthService
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +31,7 @@ class CollectionResult:
         self.permissions: List[dict] = []
         self.metrics: List[UserMetrics] = []
         self.errors: List[str] = []
-        self.collected_at = datetime.utcnow()
+        self.collected_at = utcnow()
     
     @property
     def success(self) -> bool:
@@ -160,9 +164,6 @@ class CollectionService:
         period_start = date.today() - timedelta(days=days)
         
         for user in users:
-            from app.models.license import LICENSE_CATALOG
-            from decimal import Decimal
-            
             # Get license cost
             license_info = LICENSE_CATALOG.get(
                 user.license_type,
@@ -189,4 +190,3 @@ class CollectionService:
         return metrics
 
 
-from datetime import timedelta  # Add to imports at top

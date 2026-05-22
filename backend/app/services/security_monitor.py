@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from app.models.db.security_alert import SecurityAlert, AlertSeverity, AlertType
 from app.events.event_bus import EventBus, Event, EventType
+from app.utils.time import utcnow
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +154,7 @@ class SecurityMonitor:
                 title="Administrateur sans MFA",
                 description=f"L'utilisateur {user_data['username']} possède des droits admin sans MFA activé",
                 recommendation="Activer immédiatement l'authentification multi-facteurs",
-                detected_at=datetime.utcnow()
+                detected_at=utcnow()
             )
         return None
     
@@ -173,7 +174,7 @@ class SecurityMonitor:
                         title="Compte admin inactif",
                         description=f"Compte admin inactif depuis {days_inactive} jours",
                         recommendation="Désactiver le compte ou retirer les droits admin",
-                        detected_at=datetime.utcnow()
+                        detected_at=utcnow()
                     )
         return None
     
@@ -190,7 +191,7 @@ class SecurityMonitor:
                 title="Permission ModifyAllData détectée",
                 description=f"L'utilisateur possède la permission de modification universelle",
                 recommendation="Auditer la nécessité de cette permission critique",
-                detected_at=datetime.utcnow()
+                detected_at=utcnow()
             )
         return None
     
@@ -207,7 +208,7 @@ class SecurityMonitor:
                 title="Permission ViewAllData sur compte non-admin",
                 description=f"Utilisateur non-admin avec accès en lecture universelle",
                 recommendation="Vérifier la justification métier",
-                detected_at=datetime.utcnow()
+                detected_at=utcnow()
             )
         return None
     
@@ -231,7 +232,7 @@ class SecurityMonitor:
                     title="Utilisateur externe avec permissions sensibles",
                     description=f"Type: {user_type}, Permissions: {', '.join(sensitive_perms)}",
                     recommendation="Restreindre immédiatement les permissions",
-                    detected_at=datetime.utcnow()
+                    detected_at=utcnow()
                 )
         return None
 
